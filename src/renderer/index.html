@@ -21,6 +21,44 @@
     <p id="loading-status">Initializing...</p>
   </div>
 
+  <!-- Update Available Screen -->
+  <div id="update-screen" class="screen">
+    <div class="update-content">
+      <div class="update-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="80" height="80">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+        </svg>
+      </div>
+      <h1 id="update-title">Update Beschikbaar</h1>
+      <p id="update-version-info" class="update-version">v1.0.0 → v1.1.0</p>
+      <div class="update-options">
+        <div id="update-skip" class="update-option">
+          <div class="option-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="32" height="32">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </div>
+          <span>Overslaan</span>
+        </div>
+        <div id="update-install" class="update-option selected">
+          <div class="option-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="32" height="32">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          </div>
+          <span>Installeren</span>
+        </div>
+      </div>
+      <p class="update-hint">← Gebruik draaiknop om te kiezen, druk om te bevestigen →</p>
+      <div id="update-progress" class="update-progress" style="display: none;">
+        <div class="progress-bar">
+          <div id="update-progress-fill" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <p id="update-progress-text">Downloaden... 0%</p>
+      </div>
+    </div>
+  </div>
+
   <!-- WiFi Setup Screen -->
   <div id="wifi-screen" class="screen">
     <div class="wifi-content">

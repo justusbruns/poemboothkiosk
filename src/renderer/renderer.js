@@ -30,12 +30,17 @@ const state = {
   loadingTextInterval: null,
   loadingTextIndex: 0,
   typingTimeoutId: null,      // Current pending typing animation timeout
-  typingSessionId: null       // Unique ID for current typing session
+  typingSessionId: null,      // Unique ID for current typing session
+  // Update state
+  updateAvailable: false,
+  updateInfo: null,
+  updateSelectedOption: 'install' // 'skip' or 'install'
 };
 
 // DOM Elements
 const screens = {
   loading: document.getElementById('loading-screen'),
+  update: document.getElementById('update-screen'),
   wifi: document.getElementById('wifi-screen'),
   booth: document.getElementById('booth-screen'),
   processing: document.getElementById('processing-screen'),
@@ -77,7 +82,15 @@ const elements = {
   lottieContainer: document.getElementById('lottie-animation'),
   notificationToast: document.getElementById('notification-toast'),
   notificationMessage: document.getElementById('notification-message'),
-  loadingStatusText: document.getElementById('loading-status-text')
+  loadingStatusText: document.getElementById('loading-status-text'),
+  // Update screen elements
+  updateTitle: document.getElementById('update-title'),
+  updateVersionInfo: document.getElementById('update-version-info'),
+  updateSkip: document.getElementById('update-skip'),
+  updateInstall: document.getElementById('update-install'),
+  updateProgress: document.getElementById('update-progress'),
+  updateProgressFill: document.getElementById('update-progress-fill'),
+  updateProgressText: document.getElementById('update-progress-text')
 };
 
 // =============================================================================
@@ -434,6 +447,152 @@ function updateUIText() {
 }
 
 // =============================================================================
+// Update Screen Logic
+// =============================================================================
+
+/**
+ * Show update screen and wait for user decision
+ * @returns {Promise<boolean>} true if user wants to install, false to skip
+ */
+async function showUpdateScreen(currentVersion, newVersion) {
+  return new Promise((resolve) => {
+    // Update version info
+    if (elements.updateVersionInfo) {
+      elements.updateVersionInfo.textContent = `v${currentVersion} → v${newVersion}`;
+    }
+
+    // Reset selection to install
+    state.updateSelectedOption = 'install';
+    updateUpdateSelection();
+
+    // Show update screen
+    showScreen('update');
+
+    // Set up hardware event listeners for update screen
+    const handleKnobRotate = (data) => {
+      if (state.screen !== 'update') return;
+
+      // Toggle between skip and install
+      if (data.direction === 'left') {
+        state.updateSelectedOption = 'skip';
+      } else {
+        state.updateSelectedOption = 'install';
+      }
+      updateUpdateSelection();
+    };
+
+    const handleButtonPress = () => {
+      if (state.screen !== 'update') return;
+
+      // Remove listeners
+      window.electronAPI.onKnobRotate(() => {});
+
+      // Resolve based on selection
+      resolve(state.updateSelectedOption === 'install');
+    };
+
+    // Listen for hardware events
+    window.electronAPI.onKnobRotate(handleKnobRotate);
+    window.electronAPI.onButtonPress(handleButtonPress);
+
+    // Also handle keyboard for dev mode
+    const keyHandler = (e) => {
+      if (state.screen !== 'update') return;
+
+      if (e.code === 'ArrowLeft') {
+        state.updateSelectedOption = 'skip';
+        updateUpdateSelection();
+      } else if (e.code === 'ArrowRight') {
+        state.updateSelectedOption = 'install';
+        updateUpdateSelection();
+      } else if (e.code === 'Enter' || e.code === 'Space') {
+        document.removeEventListener('keydown', keyHandler);
+        resolve(state.updateSelectedOption === 'install');
+      }
+    };
+    document.addEventListener('keydown', keyHandler);
+  });
+}
+
+/**
+ * Update visual selection on update screen
+ */
+function updateUpdateSelection() {
+  if (elements.updateSkip && elements.updateInstall) {
+    if (state.updateSelectedOption === 'skip') {
+      elements.updateSkip.classList.add('selected');
+      elements.updateInstall.classList.remove('selected');
+    } else {
+      elements.updateSkip.classList.remove('selected');
+      elements.updateInstall.classList.add('selected');
+    }
+  }
+}
+
+/**
+ * Handle update download and installation
+ */
+async function handleUpdateInstall() {
+  // Show progress UI
+  if (elements.updateProgress) {
+    elements.updateProgress.style.display = 'block';
+  }
+
+  // Hide options during download
+  const updateOptions = document.querySelector('.update-options');
+  const updateHint = document.querySelector('.update-hint');
+  if (updateOptions) updateOptions.style.display = 'none';
+  if (updateHint) updateHint.style.display = 'none';
+
+  // Update title
+  if (elements.updateTitle) {
+    elements.updateTitle.textContent = 'Updating...';
+  }
+
+  // Listen for download progress
+  window.electronAPI.onUpdateProgress((progress) => {
+    console.log('[RENDERER] Update download progress:', progress + '%');
+    if (elements.updateProgressFill) {
+      elements.updateProgressFill.style.width = progress + '%';
+    }
+    if (elements.updateProgressText) {
+      elements.updateProgressText.textContent = `Downloaden... ${progress}%`;
+    }
+  });
+
+  // Listen for download complete
+  window.electronAPI.onUpdateDownloaded((info) => {
+    console.log('[RENDERER] Update downloaded, installing...');
+    if (elements.updateProgressText) {
+      elements.updateProgressText.textContent = 'Installeren...';
+    }
+
+    // Small delay then install
+    setTimeout(async () => {
+      await window.electronAPI.updateInstall();
+    }, 1000);
+  });
+
+  // Start download
+  const downloadResult = await window.electronAPI.updateDownload();
+  if (!downloadResult.success) {
+    console.error('[RENDERER] Update download failed:', downloadResult.error);
+    if (elements.updateProgressText) {
+      elements.updateProgressText.textContent = 'Download mislukt: ' + downloadResult.error;
+    }
+
+    // Show retry option after 3 seconds
+    setTimeout(() => {
+      // Reset and allow retry or skip
+      if (updateOptions) updateOptions.style.display = 'flex';
+      if (updateHint) updateHint.style.display = 'block';
+      if (elements.updateTitle) elements.updateTitle.textContent = 'Update Beschikbaar';
+      if (elements.updateProgress) elements.updateProgress.style.display = 'none';
+    }, 3000);
+  }
+}
+
+// =============================================================================
 // App Initialization
 // =============================================================================
 
@@ -489,6 +648,31 @@ async function initializeApp() {
 
     // Get kiosk configuration
     state.kioskConfig = await window.electronAPI.apiGetConfig();
+
+    // Check for updates before proceeding
+    updateStatus('loading', 'Checking for updates...');
+    const updateResult = await window.electronAPI.updateCheck();
+
+    if (updateResult.available && updateResult.info) {
+      console.log('[RENDERER] Update available:', updateResult.info.version);
+      state.updateAvailable = true;
+      state.updateInfo = updateResult.info;
+
+      // Show update screen and wait for user decision
+      const shouldUpdate = await showUpdateScreen(updateResult.currentVersion, updateResult.info.version);
+
+      if (shouldUpdate) {
+        // User chose to install - download and install
+        await handleUpdateInstall();
+        return; // App will restart after install
+      } else {
+        // User chose to skip
+        console.log('[RENDERER] User skipped update, continuing...');
+        await window.electronAPI.updateSkip();
+      }
+    } else {
+      console.log('[RENDERER] No update available, current version:', updateResult.currentVersion);
+    }
 
     // Load camera rotation from config
     state.cameraRotation = state.kioskConfig.camera_rotation || 0;

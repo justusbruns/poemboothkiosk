@@ -10,6 +10,7 @@ const HardwareService = require('../services/hardwareService');
 const MockHardwareService = require('../services/mockHardwareService');
 const PrinterService = require('../services/printerService');
 const MockPrinterService = require('../services/mockPrinterService');
+const UpdateService = require('../services/updateService');
 
 // Constants
 const IS_DEV = process.argv.includes('--dev');
@@ -34,6 +35,7 @@ let renderingService = null;
 let wifiService = null;
 let hardwareService = null;
 let printerService = null;
+let updateService = null;
 
 // Get platform-specific certificate path
 function getCertificatePath() {
@@ -685,6 +687,99 @@ ipcMain.handle('quit-app', async () => {
     return true;
   }
   return false;
+});
+
+// =============================================================================
+// IPC Handlers - Auto-Update
+// =============================================================================
+
+// Check for updates
+ipcMain.handle('update:check', async () => {
+  try {
+    console.log('[MAIN] Checking for updates...');
+
+    if (!updateService) {
+      updateService = new UpdateService();
+
+      // Set up progress callback
+      updateService.onDownloadProgress = (progress) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update:progress', progress);
+        }
+      };
+
+      // Set up downloaded callback
+      updateService.onUpdateDownloaded = (info) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('update:downloaded', info);
+        }
+      };
+    }
+
+    const result = await updateService.checkForUpdates();
+    console.log('[MAIN] Update check result:', result);
+    return result;
+  } catch (error) {
+    console.error('[MAIN] Update check error:', error);
+    return {
+      available: false,
+      error: error.message,
+      currentVersion: app.getVersion()
+    };
+  }
+});
+
+// Download update
+ipcMain.handle('update:download', async () => {
+  try {
+    console.log('[MAIN] Downloading update...');
+    if (!updateService) {
+      return { success: false, error: 'Update service not initialized' };
+    }
+    const success = await updateService.downloadUpdate();
+    return { success };
+  } catch (error) {
+    console.error('[MAIN] Update download error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Install update
+ipcMain.handle('update:install', async () => {
+  try {
+    console.log('[MAIN] Installing update...');
+    if (!updateService) {
+      return { success: false, error: 'Update service not initialized' };
+    }
+    updateService.installUpdate();
+    return { success: true };
+  } catch (error) {
+    console.error('[MAIN] Update install error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
+// Skip update
+ipcMain.handle('update:skip', async () => {
+  console.log('[MAIN] Skipping update...');
+  if (updateService) {
+    updateService.skipUpdate();
+  }
+  return { success: true };
+});
+
+// Get update status
+ipcMain.handle('update:get-status', async () => {
+  if (!updateService) {
+    return {
+      currentVersion: app.getVersion(),
+      updateAvailable: false,
+      updateInfo: null,
+      downloadProgress: 0,
+      updateDownloaded: false
+    };
+  }
+  return updateService.getStatus();
 });
 
 // Handle uncaught exceptions

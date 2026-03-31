@@ -46,7 +46,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   storeDeviceConfig: (config) => ipcRenderer.invoke('store-device-config', config),
   getDeviceConfig: () => ipcRenderer.invoke('get-device-config'),
   getKioskConfig: () => ipcRenderer.invoke('get-kiosk-config'),
-  quitApp: () => ipcRenderer.invoke('quit-app')
+  quitApp: () => ipcRenderer.invoke('quit-app'),
+
+  // Auto-Update
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.invoke('update:download'),
+  updateInstall: () => ipcRenderer.invoke('update:install'),
+  updateSkip: () => ipcRenderer.invoke('update:skip'),
+  updateGetStatus: () => ipcRenderer.invoke('update:get-status'),
+  onUpdateProgress: (callback) => ipcRenderer.on('update:progress', (event, progress) => callback(progress)),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update:downloaded', (event, info) => callback(info))
 });
 
 console.log('[PRELOAD] Electron API exposed to renderer');
