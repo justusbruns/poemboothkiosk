@@ -292,6 +292,31 @@ app.on('will-quit', async () => {
   }
 });
 
+// Kill all child processes (Playwright/Chromium) before update install
+function killChildProcesses() {
+  try {
+    const { execSync } = require('child_process');
+    const pid = process.pid;
+    // Get all descendant PIDs and kill them
+    const output = execSync(
+      `wmic process where "ParentProcessId=${pid}" get ProcessId /format:list`,
+      { encoding: 'utf8', timeout: 5000 }
+    );
+    const childPids = output.match(/ProcessId=(\d+)/g)?.map(s => s.split('=')[1]) || [];
+    for (const childPid of childPids) {
+      try {
+        execSync(`taskkill /PID ${childPid} /T /F`, { stdio: 'ignore', timeout: 3000 });
+        console.log(`[MAIN] Killed child process ${childPid}`);
+      } catch (e) {
+        // Process may have already exited
+      }
+    }
+    console.log('[MAIN] Child process cleanup complete');
+  } catch (e) {
+    console.warn('[MAIN] killChildProcesses error:', e.message);
+  }
+}
+
 // App lifecycle
 app.whenReady().then(async () => {
   console.log('[MAIN] App ready');
@@ -316,10 +341,14 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Prevent app quit in kiosk mode
+// Prevent app quit in kiosk mode (but allow quit for updates)
+let allowQuitForUpdate = false;
+
 if (!IS_DEV) {
   app.on('before-quit', (event) => {
-    event.preventDefault();
+    if (!allowQuitForUpdate) {
+      event.preventDefault();
+    }
   });
 }
 
@@ -748,13 +777,59 @@ ipcMain.handle('update:download', async () => {
 ipcMain.handle('update:install', async () => {
   try {
     console.log('[MAIN] Installing update...');
-    if (!updateService) {
-      return { success: false, error: 'Update service not initialized' };
+    if (!updateService || !updateService.installUpdate()) {
+      return { success: false, error: 'No update ready to install' };
     }
+
+    // Phase 1: Gracefully close services that hold child processes
+    console.log('[MAIN] Phase 1: Closing services...');
+    if (renderingService) {
+      try {
+        await Promise.race([
+          renderingService.destroy(),
+          new Promise(resolve => setTimeout(resolve, 3000))
+        ]);
+      } catch (e) {
+        console.warn('[MAIN] renderingService.destroy() failed:', e.message);
+      }
+    }
+
+    // Force-kill any remaining Chromium/Playwright child processes
+    killChildProcesses();
+
+    if (hardwareService) {
+      try { await hardwareService.destroy(); } catch (e) {}
+    }
+    if (printerService) {
+      try { printerService.destroy(); } catch (e) {}
+    }
+
+    // Phase 2: Destroy window (synchronous, unlike close())
+    console.log('[MAIN] Phase 2: Destroying window...');
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.destroy();
+    }
+
+    // Phase 3: Spawn installer and force-exit
+    // quitAndInstall() spawns NSIS installer as detached process, then calls app.quit()
+    // We follow up with app.exit(0) to ensure the process tree dies immediately
+    console.log('[MAIN] Phase 3: Spawning installer and exiting...');
+    allowQuitForUpdate = true;
     updateService.installUpdate();
+
+    // Force-kill after brief delay in case app.quit() from quitAndInstall hangs
+    setTimeout(() => {
+      app.exit(0);
+    }, 500);
+
     return { success: true };
   } catch (error) {
     console.error('[MAIN] Update install error:', error);
+    // Fallback: force exit anyway
+    setTimeout(() => {
+      allowQuitForUpdate = true;
+      app.exit(0);
+    }, 2000);
     return { success: false, error: error.message };
   }
 });

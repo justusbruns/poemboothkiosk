@@ -1,6 +1,6 @@
 {
   "name": "poembooth-kiosk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Poem Booth Kiosk Application - AI-powered photo booth for generating personalized poems",
   "main": "src/main/main.js",
   "scripts": {
@@ -51,19 +51,24 @@
   "build": {
     "appId": "com.poembooth.kiosk",
     "productName": "PoemBooth Kiosk",
+    "artifactName": "${name}-${version}-${os}.${ext}",
     "directories": {
       "output": "dist"
     },
     "win": {
       "target": [
-        "nsis"
+        "nsis",
+        "zip"
       ]
     },
     "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "perMachine": false,
+      "packElevateHelper": false,
+      "allowElevation": false
     },
     "files": [
       "src/**/*",

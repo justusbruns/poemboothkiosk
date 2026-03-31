@@ -26,7 +26,7 @@ class UpdateService {
 
     // Configure auto-updater
     autoUpdater.autoDownload = false; // We control when to download
-    autoUpdater.autoInstallOnAppQuit = false; // We control when to install
+    autoUpdater.autoInstallOnAppQuit = false; // We handle install manually
 
     this._setupEventHandlers();
   }
@@ -83,7 +83,15 @@ class UpdateService {
       console.log('[UPDATE] Initiating update check...');
       console.log('[UPDATE] Current version:', app.getVersion());
 
-      const result = await autoUpdater.checkForUpdates();
+      // Timeout after 15 seconds to avoid hanging on startup
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Update check timed out after 15s')), 15000)
+      );
+
+      await Promise.race([
+        autoUpdater.checkForUpdates(),
+        timeoutPromise
+      ]);
 
       return {
         available: this.updateAvailable,
@@ -129,8 +137,10 @@ class UpdateService {
       return false;
     }
 
-    console.log('[UPDATE] Installing update and restarting...');
-    autoUpdater.quitAndInstall(false, true);
+    console.log('[UPDATE] Spawning installer (silent + forceRunAfter)...');
+    // This spawns the NSIS installer as a detached process, then calls app.quit()
+    // isSilent=true: no installer window, forceRunAfter=true: restart app after install
+    autoUpdater.quitAndInstall(true, true);
     return true;
   }
 
