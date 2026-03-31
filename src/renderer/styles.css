@@ -1,0 +1,877 @@
+/* Reset and Base Styles */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  background-color: #1a1a1a;
+  color: #ffffff;
+  overflow: hidden;
+  width: 100vw;
+  height: 100vh;
+  cursor: none; /* Hide cursor in kiosk mode */
+}
+
+h1, h2, h3, h4, h5, h6, p {
+  font-family: 'Inter', sans-serif;
+}
+
+/* Screen Management */
+.screen {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.screen.active {
+  display: flex;
+  opacity: 1;
+}
+
+/* Loading Screen */
+#loading-screen {
+  background: #000000;
+  flex-direction: column;
+  transition: opacity 1s ease-out;
+}
+
+#loading-screen.fade-out {
+  opacity: 0;
+}
+
+.loading-lottie {
+  width: 100%;
+  max-width: 800px;
+  height: auto;
+  margin-bottom: 2rem;
+}
+
+#loading-status {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.2rem;
+  color: #ffffff;
+  opacity: 0.9;
+  text-align: center;
+}
+
+/* WiFi Setup Screen */
+#wifi-screen {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.wifi-content {
+  font-family: 'Inter', sans-serif;
+  text-align: center;
+  max-width: 800px;
+}
+
+.icon {
+  font-size: 5rem;
+  margin-bottom: 1rem;
+}
+
+#wifi-scanner-video {
+  width: 640px;
+  height: 480px;
+  border-radius: 12px;
+  margin: 2rem auto;
+  border: 4px solid rgba(255, 255, 255, 0.3);
+}
+
+.status-message {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.2rem;
+  padding: 1rem;
+  margin-top: 1rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Booth Screen - Portrait 9:16 Layout */
+#booth-screen {
+  background: #000000;
+}
+
+.booth-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.camera-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+}
+
+#camera-video {
+  /* Positioning and sizing handled by applyCameraRotation() in JavaScript */
+  position: absolute;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* Camera Mirroring - handled by JavaScript transform */
+#camera-video.mirrored {
+  /* Mirror handled in JS applyCameraRotation() */
+}
+
+.countdown-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent; /* Changed from dark - camera visible */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.countdown-number {
+  font-size: 15rem;
+  font-weight: bold;
+  color: #ffffff;
+  animation: countdown-pulse 1s ease;
+  margin-top: -9rem; /* Moved up by 9rem */
+}
+
+@keyframes countdown-pulse {
+  0% { transform: scale(0); opacity: 0; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* White Flash Overlay */
+.white-flash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: white;
+  z-index: 20;
+  animation: flash 0.8s ease-out;
+}
+
+@keyframes flash {
+  0% { opacity: 1; }
+  62% { opacity: 1; }  /* Hold full white for ~0.5s */
+  100% { opacity: 0; } /* Fade out over ~0.3s */
+}
+
+/* Floating Action Button */
+.floating-action {
+  position: absolute;
+  bottom: 12rem; /* Moved up by 9rem */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+/* Pulsating Circles */
+.pulsating-circles {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 300px;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border: 3px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  animation: pulse 3s ease-out infinite;
+}
+
+.pulse-ring:nth-child(2) {
+  animation-delay: 1s;
+}
+
+.pulse-ring:nth-child(3) {
+  animation-delay: 2s;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.3);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.style-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  opacity: 0.8;
+  color: white;
+  text-align: center;
+  margin-top: 0.5rem;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.action-button-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: center;
+  color: white;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  z-index: 1;
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* Style carousel - container with centered main text */
+.style-carousel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  /* No gap - use absolute positioning for prev/next */
+}
+
+/* Adjacent style options (prev/next) - ABSOLUTE positioning */
+.style-option {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.4rem;
+  font-weight: 500;
+  color: white;
+  opacity: 0;
+  white-space: nowrap;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: opacity 0.3s ease-out;
+  pointer-events: none;
+  position: absolute;  /* Absolute so they don't shift center */
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.style-option.style-prev {
+  right: calc(50% + 140px);  /* Position to the left of center */
+}
+
+.style-option.style-next {
+  left: calc(50% + 140px);   /* Position to the right of center */
+}
+
+/* Show adjacent options when carousel is actively turning */
+.style-carousel.turning .style-option {
+  opacity: 0.5;
+}
+
+/* Slide animations for the ENTIRE carousel strip - MIRRORED direction */
+@keyframes carouselSlideRight {
+  0% { transform: translateX(-100px); }
+  60% { transform: translateX(12px); }
+  80% { transform: translateX(-4px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes carouselSlideLeft {
+  0% { transform: translateX(100px); }
+  60% { transform: translateX(-12px); }
+  80% { transform: translateX(4px); }
+  100% { transform: translateX(0); }
+}
+
+.style-carousel.slide-right {
+  animation: carouselSlideRight 0.35s ease-out forwards;
+}
+
+.style-carousel.slide-left {
+  animation: carouselSlideLeft 0.35s ease-out forwards;
+}
+
+.hardware-instructions {
+  font-family: 'Inter', sans-serif;
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.hardware-instructions p {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.2rem;
+  margin: 0.5rem 0;
+  opacity: 0.9;
+}
+
+/* Buttons */
+.btn {
+  font-family: 'Inter', sans-serif;
+  padding: 1.5rem 3rem;
+  font-size: 1.5rem;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+}
+
+.btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.btn:active {
+  transform: translateY(0);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.btn-capture {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  padding: 2rem 4rem;
+  font-size: 2rem;
+}
+
+.btn-print {
+  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  color: white;
+}
+
+/* Processing Screen - Full-screen photo with loading overlay */
+#processing-screen {
+  background: #000;
+  position: relative;
+}
+
+.processing-photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1; /* Explicitly below overlay (z-index: 100) */
+}
+
+.loading-spinner-overlay {
+  position: absolute;
+  top: calc(50% - 9rem); /* Moved up by 9rem */
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Lottie Animation Container */
+.lottie-container {
+  width: 400px;
+  height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 101;
+}
+
+.lottie-container svg,
+.lottie-container canvas {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* Loading Status Text (Processing Screen) */
+.loading-status-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  color: white;
+  opacity: 0.8;
+  text-align: center;
+  margin-top: 1.5rem;
+  padding: 0 2rem;
+  animation: fadeInText 0.5s ease-in-out;
+}
+
+@keyframes fadeInText {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 0.8; transform: translateY(0); }
+}
+
+/* Result Screen - Blurred photo background + poem overlay + circles */
+#result-screen {
+  background: #000;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Blurred photo background */
+.result-photo {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+
+.result-photo.blurred {
+  filter: blur(8px) brightness(0.7);
+  animation: fadeInBlur 0.5s ease-in;
+}
+
+@keyframes fadeInBlur {
+  from {
+    filter: blur(0px) brightness(1);
+  }
+  to {
+    filter: blur(8px) brightness(0.7);
+  }
+}
+
+/* Poem text overlay - top-aligned with fixed height container */
+.poem-overlay {
+  position: absolute;
+  top: 10%; /* 10% offset from top of screen */
+  left: 0;
+  right: 0;
+  bottom: 340px; /* Leave space for action circles at bottom */
+  width: 80%; /* 10% margin on each side */
+  max-width: 80%;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* Left-align content */
+  justify-content: flex-start; /* Start from top - prevents jumping while typing */
+  padding: 3rem 1.5rem 2rem 1.5rem; /* More top padding for breathing room */
+  overflow: hidden;
+  z-index: 1;
+}
+
+.poem-text {
+  font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+  /* font-size dynamically calculated by JavaScript to fit container */
+  font-size: 2.5rem; /* fallback base size - increased */
+  line-height: 1.6;
+  text-align: left; /* Left-aligned for better readability */
+  white-space: pre-wrap;
+  text-shadow: 2px 2px 8px rgba(0, 0, 0, 0.8);
+  color: white;
+  width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  padding: 0;
+  display: block;
+}
+
+/* Center content for generated images */
+.poem-overlay.image-display {
+  justify-content: center;
+  align-items: center;
+}
+
+/* Pop-in animation for generated images */
+.poem-overlay.image-display img {
+  opacity: 0;
+  transform: scale(0.8);
+  animation: imagePopIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+}
+
+@keyframes imagePopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Typing cursor effect */
+.poem-text:not(.typing-complete)::after {
+  content: '|';
+  animation: blink 1s step-end infinite;
+  margin-left: 2px;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+/* Action circles container */
+.action-circles {
+  position: absolute;
+  bottom: 7.7rem; /* Moved up by 75px (half the print circle diameter) */
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 3rem;
+  z-index: 2;
+}
+
+.circle-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.action-circle {
+  position: relative;
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
+.circle-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  width: 100%;
+}
+
+/* QR Code canvas inside circle */
+.qr-canvas {
+  width: 94px;
+  height: 94px;
+  position: relative;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* QR code canvas and images */
+.qr-canvas canvas,
+.qr-canvas img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* QR Circle and Print Circle hidden by default, pop when ready */
+#qr-circle,
+#qr-circle + .circle-label,
+#print-circle,
+#print-circle + .circle-label {
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
+#qr-circle.show,
+#qr-circle.show + .circle-label,
+#print-circle.show,
+#print-circle.show + .circle-label {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Print icon */
+.print-icon, .print-done-icon {
+  font-size: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.print-icon svg {
+  color: #000000;
+  filter: drop-shadow(0 2px 4px rgba(255, 255, 255, 0.3));
+}
+
+.print-done-icon {
+  color: #4ade80;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.print-done-icon.show {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.print-done-icon svg {
+  color: #4ade80;
+  width: 56px;
+  height: 56px;
+}
+
+/* SVG Timer Ring (30s countdown for QR) */
+.timer-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 150px;
+  height: 150px;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  z-index: 5;
+}
+
+.timer-circle-bg {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.3);
+  stroke-width: 6;
+}
+
+.timer-circle {
+  fill: none;
+  stroke: hsl(120, 80%, 55%);  /* Start green */
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 440;
+  stroke-dashoffset: 440;  /* Start empty */
+  /* No transition - using requestAnimationFrame for smooth updates */
+}
+
+/* SVG Progress Ring (3s hold for print) */
+.progress-ring {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 150px;
+  height: 150px;
+  transform: rotate(-90deg);
+}
+
+.progress-circle-bg {
+  fill: none;
+  stroke: rgba(0, 0, 0, 0.1);
+  stroke-width: 6;
+}
+
+.progress-circle {
+  fill: none;
+  stroke: #4ade80;
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 440;
+  stroke-dashoffset: 440;
+  transition: stroke-dashoffset 0.05s linear;
+}
+
+/* Glass wipe animation */
+.glass-wipe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+  clip-path: circle(0% at 50% 50%);
+  animation: wipeOut 0.8s ease-in-out forwards;
+}
+
+@keyframes wipeOut {
+  0% {
+    clip-path: circle(0% at 50% 50%);
+  }
+  100% {
+    clip-path: circle(150% at 50% 50%);
+  }
+}
+
+/* Error Screen */
+#error-screen {
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+}
+
+.error-content {
+  font-family: 'Inter', sans-serif;
+  text-align: center;
+  max-width: 600px;
+}
+
+.error-content .icon {
+  font-size: 5rem;
+  margin-bottom: 1rem;
+}
+
+.error-content h1 {
+  font-family: 'Inter', sans-serif;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+#error-message {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.5rem;
+  opacity: 0.9;
+  margin-bottom: 2rem;
+}
+
+.debug-info {
+  margin-top: 2rem;
+  text-align: left;
+}
+
+.debug-info summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  opacity: 0.7;
+}
+
+.debug-info pre {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  overflow: auto;
+  max-height: 200px;
+  margin-top: 0.5rem;
+}
+
+/* Friendly Notification Toast */
+.notification-toast {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 500;
+  max-width: 600px;
+  width: 90%;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.notification-toast.hide {
+  animation: fadeOut 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.95);
+  }
+}
+
+.notification-message {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 400;
+  color: #ffffff;
+  margin: 0;
+  padding: 1.5rem 2rem;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 16px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* Debug Panel */
+.debug-panel {
+  font-family: 'Inter', sans-serif;
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.9);
+  padding: 1rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  max-width: 300px;
+  z-index: 1000;
+  cursor: auto;
+}
+
+.debug-panel h3 {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.debug-panel button {
+  display: block;
+  width: 100%;
+  padding: 0.5rem;
+  margin-top: 0.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.debug-panel button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+#debug-content {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  max-height: 200px;
+  overflow: auto;
+}
+
+/* Portrait 9:16 optimized - no media queries needed */

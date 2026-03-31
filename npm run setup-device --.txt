@@ -1,0 +1,4 @@
+  npm run setup-device -- \
+    --asset-tag=PB-TEST \
+    --hub-id=5f250dd6-440c-40d2-b6a2-db4f30b28e19 \
+    --serial=SN-2025-001

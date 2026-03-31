@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com https://xtgxfighvyybzcxfimvs.supabase.co https://book.poembooth.com;">
+  <title>Poem Booth Kiosk</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <!-- SECURITY: All libraries bundled locally (no CDN dependencies) -->
+  <script src="vendor/jsQR.min.js"></script>
+  <script src="vendor/qr-code-styling.js"></script>
+  <script src="vendor/lottie.min.js"></script>
+</head>
+<body>
+  <!-- Loading Screen -->
+  <div id="loading-screen" class="screen active">
+    <div id="loading-lottie" class="loading-lottie"></div>
+    <p id="loading-status">Initializing...</p>
+  </div>
+
+  <!-- WiFi Setup Screen -->
+  <div id="wifi-screen" class="screen">
+    <div class="wifi-content">
+      <div class="icon">📶</div>
+      <h1>WiFi Setup Required</h1>
+      <p>Hold the WiFi QR code in front of the camera</p>
+      <video id="wifi-scanner-video" autoplay playsinline></video>
+      <div class="status-message" id="wifi-status"></div>
+    </div>
+  </div>
+
+  <!-- Main Photo Booth Screen -->
+  <div id="booth-screen" class="screen">
+    <div class="booth-container">
+      <!-- Camera View (mirrored for display) -->
+      <div class="camera-container">
+        <video id="camera-video" class="mirrored" autoplay playsinline></video>
+        <canvas id="camera-canvas" style="display: none;"></canvas>
+
+        <!-- Countdown Overlay (visible, no dark background) -->
+        <div id="countdown-overlay" class="countdown-overlay" style="display: none;">
+          <div class="countdown-number">3</div>
+        </div>
+
+        <!-- White Flash Overlay -->
+        <div id="white-flash" class="white-flash" style="display: none;"></div>
+      </div>
+
+      <!-- Floating Action Button with Pulsating Circles -->
+      <div class="floating-action">
+        <div class="pulsating-circles">
+          <div class="pulse-ring"></div>
+          <div class="pulse-ring"></div>
+          <div class="pulse-ring"></div>
+        </div>
+        <!-- Style carousel for coverflow-like animation -->
+        <div class="style-carousel">
+          <div id="style-prev" class="style-option style-prev"></div>
+          <div id="action-button-text" class="action-button-text">Press for Poetry</div>
+          <div id="style-next" class="style-option style-next"></div>
+        </div>
+        <div id="style-hint" class="style-hint" style="display: none;">Turn knob to change style</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Friendly Notification Toast -->
+  <div id="notification-toast" class="notification-toast" role="alert" aria-live="polite" style="display: none;">
+    <p id="notification-message" class="notification-message"></p>
+  </div>
+
+  <!-- Processing Screen (full-screen photo with loading) -->
+  <div id="processing-screen" class="screen">
+    <img id="processing-photo" class="processing-photo" src="" alt="" />
+    <div class="loading-spinner-overlay">
+      <div id="lottie-animation" class="lottie-container"></div>
+      <p id="loading-status-text" class="loading-status-text"></p>
+    </div>
+  </div>
+
+  <!-- Result Screen (blurred photo + text overlay + circles) -->
+  <div id="result-screen" class="screen">
+    <!-- Blurred Photo Background -->
+    <img id="result-photo" class="result-photo blurred" src="" alt="" />
+
+    <!-- Poem Text Overlay -->
+    <div class="poem-overlay">
+      <div id="poem-text" class="poem-text"></div>
+    </div>
+
+    <!-- QR Code and Print Circles -->
+    <div class="action-circles">
+      <!-- QR Code Circle -->
+      <div class="circle-container">
+        <div id="qr-circle" class="action-circle">
+          <div id="result-qr" class="qr-canvas"></div>
+          <!-- Countdown Timer Circle (SVG stroke animation) -->
+          <svg class="timer-ring" id="timer-svg">
+            <circle class="timer-circle-bg" cx="75" cy="75" r="70" />
+            <circle class="timer-circle" id="timer-circle" cx="75" cy="75" r="70" />
+          </svg>
+        </div>
+        <p class="circle-label">Scan to save</p>
+      </div>
+
+      <!-- Print Circle (only shows if printer detected) -->
+      <div id="print-container" class="circle-container" style="display: none;">
+        <div id="print-circle" class="action-circle">
+          <!-- Heroicons Printer Icon -->
+          <div class="print-icon" id="print-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="48" height="48">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V6.75a2.25 2.25 0 00-2.25-2.25h-6a2.25 2.25 0 00-2.25 2.25v.465m10.5 0v.465M9 11.25h6" />
+            </svg>
+          </div>
+          <!-- Heroicons Check Circle Icon (Solid) -->
+          <div class="print-done-icon" id="print-done-icon" style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="56" height="56">
+              <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <!-- Print Progress Circle (SVG stroke animation) -->
+          <svg class="progress-ring">
+            <circle class="progress-circle-bg" cx="75" cy="75" r="70" />
+            <circle class="progress-circle" id="print-progress" cx="75" cy="75" r="70" />
+          </svg>
+        </div>
+        <p class="circle-label">Hold to print</p>
+      </div>
+    </div>
+
+    <!-- Glass Wipe Overlay (for transition animation) -->
+    <div id="glass-wipe" class="glass-wipe" style="display: none;"></div>
+  </div>
+
+  <!-- Error Screen -->
+  <div id="error-screen" class="screen">
+    <div class="error-content">
+      <div class="icon">⚠️</div>
+      <h1>Something Went Wrong</h1>
+      <p id="error-message">Please try again</p>
+      <p class="hardware-instructions"><strong>Button:</strong> Try again</p>
+      <div class="debug-info" id="debug-info" style="display: none;">
+        <details>
+          <summary>Technical Details</summary>
+          <pre id="error-details"></pre>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Panel (dev mode only) -->
+  <div id="debug-panel" class="debug-panel" style="display: none;">
+    <h3>Debug Info</h3>
+    <div id="debug-content"></div>
+    <button id="toggle-fullscreen">Toggle Fullscreen</button>
+    <button id="quit-app">Quit App</button>
+  </div>
+
+  <script type="module" src="renderer.js"></script>
+</body>
+</html>

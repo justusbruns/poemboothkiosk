@@ -1,0 +1,70 @@
+{
+  "name": "poembooth-kiosk",
+  "version": "1.0.0",
+  "description": "Poem Booth Kiosk Application - AI-powered photo booth for generating personalized poems",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "dev:mock-printer": "electron . --dev --mock-printer",
+    "dev:real-printer": "electron . --dev --real-printer",
+    "dev:staging": "electron . --dev --staging",
+    "dev:staging-printer": "electron . --dev --staging --real-printer",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "postinstall": "electron-builder install-app-deps && npx playwright install chromium"
+  },
+  "keywords": [
+    "electron",
+    "kiosk",
+    "photo-booth",
+    "ai",
+    "poems"
+  ],
+  "author": "Poem Booth",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "form-data": "^4.0.0",
+    "jsqr": "^1.4.0",
+    "node-fetch": "^2.7.0",
+    "node-machine-id": "^1.1.12",
+    "node-wifi": "^2.0.15",
+    "playwright": "^1.40.0",
+    "qrcode": "^1.5.3",
+    "sharp": "^0.33.0",
+    "uuid": "^9.0.1"
+  },
+  "optionalDependencies": {
+    "onoff": "^6.0.3"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.poembooth.kiosk",
+    "productName": "PoemBooth Kiosk",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": []
+  }
+}

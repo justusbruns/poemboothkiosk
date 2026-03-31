@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git --version:*)",
+      "Bash(openssl version:*)",
+      "Bash(npm install:*)",
+      "Bash(git pull:*)",
+      "Bash(npm run setup-device:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run dev:*)",
+      "Bash(nul)",
+      "Bash(timeout /t 5 /nobreak)",
+      "Bash(powershell -Command \"Get-Process electron -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(powershell -Command \"Get-Printer | Format-List Name, DriverName, PortName, PrinterStatus, DeviceType\")",
+      "WebSearch",
+      "Bash(powershell -Command:*)",
+      "Bash(npm run build:win:*)",
+      "Bash(curl:*)",
+      "WebFetch(domain:poembooth.com)",
+      "Bash(npm start:*)",
+      "Bash(powershell -NoProfile -Command \"Get-Printer | Format-List Name,PrinterStatus,PortName,DriverName,Shared,Type,WorkOffline\")",
+      "Bash(powershell -NoProfile -Command \"Get-Printer -Name 'DP-QW410' | Format-List *\")",
+      "Bash(powershell -NoProfile -Command \"Get-PrintJob -PrinterName 'DP-QW410' -ErrorAction SilentlyContinue | Format-List\")",
+      "Bash(powershell -NoProfile -Command \"$printer = Get-Printer -Name 'DP-QW410' -ErrorAction SilentlyContinue; if \\($printer\\) {   [PSCustomObject]@{     Name = $printer.Name;     PrinterStatus = [int]$printer.PrinterStatus;     WorkOffline = $printer.WorkOffline;     Type = $printer.Type   } | ConvertTo-Json } else {   '{\\\\\"Error\\\\\":\\\\\"NotFound\\\\\"}' }\")",
+      "Bash(node:*)",
+      "Bash(cmd.exe /c \"node test-printer-detection.js\")",
+      "Bash(npm config:*)",
+      "Bash(\"C:/Users/NUC/Desktop/poemboothkiosk/dist/PoemBooth Kiosk Setup 1.0.0.exe\" /S 2>&1)",
+      "Bash(\"C:/Users/NUC/Desktop/poemboothkiosk/dist/win-unpacked/PoemBooth Kiosk.exe\" 2>&1)",
+      "Bash(powershell -NoProfile -Command \"\\(New-Object -ComObject WScript.Shell\\).CreateShortcut\\('C:\\\\Users\\\\Public\\\\Desktop\\\\PoemBooth Kiosk.lnk'\\).TargetPath\")",
+      "Bash(cp:*)",
+      "Bash(\"C:/Program Files/PoemBooth Kiosk/PoemBooth Kiosk.exe\" 2>&1)",
+      "Bash(gh auth:*)",
+      "Bash(winget install:*)",
+      "Bash(\"C:/Program Files/GitHub CLI/gh.exe\" auth status 2>&1)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
