@@ -12,6 +12,10 @@
     "dev:staging-printer": "electron . --dev --staging --real-printer",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
+    "release": "node scripts/release.js",
+    "release:patch": "node scripts/release.js patch",
+    "release:minor": "node scripts/release.js minor",
+    "release:major": "node scripts/release.js major",
     "postinstall": "electron-builder install-app-deps && npx playwright install chromium"
   },
   "keywords": [
