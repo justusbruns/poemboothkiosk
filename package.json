@@ -10,8 +10,8 @@
     "dev:real-printer": "electron . --dev --real-printer",
     "dev:staging": "electron . --dev --staging",
     "dev:staging-printer": "electron . --dev --staging --real-printer",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
+    "build": "node scripts/prepare-build.js && electron-builder",
+    "build:win": "node scripts/prepare-build.js && electron-builder --win",
     "release": "node scripts/release.js",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
@@ -79,7 +79,12 @@
       "assets/**/*",
       "package.json"
     ],
-    "extraResources": [],
+    "extraResources": [
+      {
+        "from": "playwright-browsers",
+        "to": "ms-playwright"
+      }
+    ],
     "publish": {
       "provider": "github",
       "owner": "justusbruns",

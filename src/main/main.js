@@ -2,6 +2,16 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Point Playwright at the Chromium folder bundled inside the installer via extraResources.
+// Must run BEFORE any module that imports 'playwright' — playwright reads this env var
+// the first time it's loaded.
+if (!app.isPackaged) {
+  // Dev mode: use the developer's local Playwright cache (default behavior, do nothing)
+} else {
+  process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.resourcesPath, 'ms-playwright');
+  console.log('[MAIN] Playwright browsers path (bundled):', process.env.PLAYWRIGHT_BROWSERS_PATH);
+}
+
 // === Persistent file logging ===
 // Mirror everything we console.log/warn/error to a file under userData so we can
 // debug remote kiosks. One file per session, plus a "latest.log" symlink-style copy
