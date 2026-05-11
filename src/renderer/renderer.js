@@ -1302,53 +1302,36 @@ async function processPoemGeneration(response) {
     state.currentPrintFormat = brandingTemplate?.print_format || '4x6';
     state.currentPrintOrientation = brandingTemplate?.print_orientation || 'portrait';
 
-    // Use API-provided dimensions for rendering (fill entire print format)
-    const printWidth = brandingTemplate?.output_width || 2048;
-    const printHeight = brandingTemplate?.output_height || 1536;
-    const printDpi = brandingTemplate?.output_dpi || 300;
-
     console.log('[RENDERER] Poem generated, session ID:', sessionId);
     console.log('[RENDERER] Poem text length:', poemText.length, 'chars');
     console.log('[RENDERER] Print format:', state.currentPrintFormat, 'orientation:', state.currentPrintOrientation);
-    console.log('[RENDERER] API dimensions:', printWidth, 'x', printHeight, '@', printDpi, 'DPI');
+    console.log('[RENDERER] Template output:', brandingTemplate?.output_width, 'x', brandingTemplate?.output_height, '@', brandingTemplate?.output_dpi, 'DPI');
 
     // Show poem text immediately with typing effect
     showPoemWithTypingEffect(poemText);
 
     updateProgress('Creating artwork...', 60);
 
-    // === STEP 1: Render HIGH-QUALITY image for printing ===
-    // Use API-provided dimensions to fill entire print format
-    console.log('[RENDERER] Rendering print image with API dimensions:', printWidth, 'x', printHeight);
+    // === STEP 1: Render HIGH-QUALITY image for printing (300 DPI metadata) ===
     const printImageBuffer = await window.electronAPI.renderPoemImage(
       state.currentPhoto,
       { text: poemText },
       brandingTemplate,
-      {
-        outputWidth: printWidth,
-        outputHeight: printHeight,
-        quality: 95,  // Near-lossless JPEG quality for printing
-        dpi: printDpi
-      }
+      { quality: 'hd' }
     );
 
-    // Store high-resolution buffer for printing
     state.currentPrintBuffer = printImageBuffer;
     console.log('[RENDERER] ✅ Print buffer created:', printImageBuffer.length, 'bytes',
                 '(' + (printImageBuffer.length / 1024 / 1024).toFixed(2) + ' MB)');
 
     updateProgress('Optimizing for web...', 70);
 
-    // === STEP 2: Render WEB-OPTIMIZED image for backend upload ===
-    // Uses template dimensions with quality 85 for smaller file size
-    console.log('[RENDERER] Rendering web-optimized image (template dimensions, quality 85)...');
+    // === STEP 2: Render image for backend upload (template DPI metadata) ===
     const webImageBuffer = await window.electronAPI.renderPoemImage(
       state.currentPhoto,
       { text: poemText },
       brandingTemplate,
-      {
-        quality: 85  // Web-optimized quality (~2MB)
-      }
+      { quality: 'standard' }
     );
 
     console.log('[RENDERER] ✅ Web buffer created:', webImageBuffer.length, 'bytes',
@@ -1671,6 +1654,61 @@ function cancelTypingAnimation() {
   state.typingSessionId = null;
 }
 
+/**
+ * Convert minimal markdown (`# heading`, `**bold**`, `*italic*`) into safe HTML so the
+ * on-screen poem matches the rendered image styling.
+ */
+function parseMarkdownPoem(text) {
+  if (!text) return '';
+  // Escape HTML first to neutralize anything in AI-generated text
+  let html = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  html = html.split('\n').map(line => {
+    if (line.startsWith('### ')) return `<h3>${line.slice(4)}</h3>`;
+    if (line.startsWith('## ')) return `<h2>${line.slice(3)}</h2>`;
+    if (line.startsWith('# ')) return `<h1>${line.slice(2)}</h1>`;
+    return line;
+  }).join('\n');
+
+  // Bold before italic so ** wins over *
+  html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+
+  return html;
+}
+
+/**
+ * Build a DOM tree from the markdown-rendered poem where each visible character is wrapped
+ * in its own `<span class="poem-char">` with `display: none`. Reveal the spans in order to
+ * animate the typing effect WITHOUT ever showing markdown markers (`#`, `*`, `**`).
+ */
+function buildHiddenPoemDom(parentEl, poemText) {
+  parentEl.innerHTML = parseMarkdownPoem(poemText);
+
+  function wrapTextNodes(node) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      const text = node.textContent;
+      if (!text) return;
+      const frag = document.createDocumentFragment();
+      for (const ch of text) {
+        const span = document.createElement('span');
+        span.className = 'poem-char';
+        span.textContent = ch;
+        frag.appendChild(span);
+      }
+      node.parentNode.replaceChild(frag, node);
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      Array.from(node.childNodes).forEach(wrapTextNodes);
+    }
+  }
+  wrapTextNodes(parentEl);
+
+  return parentEl.querySelectorAll('.poem-char');
+}
+
 function showPoemWithTypingEffect(poemText) {
   // Cancel any existing typing animation to prevent race conditions
   cancelTypingAnimation();
@@ -1690,9 +1728,10 @@ function showPoemWithTypingEffect(poemText) {
   elements.resultPhoto.src = state.currentPhoto;
   elements.resultPhoto.classList.add('blurred');
 
-  // Clear previous poem text
-  elements.poemText.textContent = '';
+  // Pre-render full markdown HTML with every visible character wrapped in a hidden span.
+  // The typing animation then reveals one span at a time — markdown markers are never visible.
   elements.poemText.classList.remove('typing-complete');
+  const charSpans = buildHiddenPoemDom(elements.poemText, poemText);
 
   // Remove image-display class when showing poem text (restores poem layout)
   const poemOverlay = elements.poemText.parentElement;
@@ -1724,8 +1763,9 @@ function showPoemWithTypingEffect(poemText) {
       return; // Abort - a new typing session has started
     }
 
-    if (charIndex < poemText.length) {
-      elements.poemText.textContent += poemText.charAt(charIndex);
+    if (charIndex < charSpans.length) {
+      charSpans[charIndex].classList.add('revealed');
+      const lastChar = charSpans[charIndex].textContent;
       charIndex++;
 
       // Calculate delay with human-like variation
@@ -1735,9 +1775,6 @@ function showPoemWithTypingEffect(poemText) {
       if (Math.random() < 0.08) {
         delay += Math.random() * 250 + 100; // Add 100-350ms pause
       }
-
-      // Longer pause after punctuation and line breaks (feels like natural breathing)
-      const lastChar = poemText.charAt(charIndex - 1);
       if (['.', '!', '?'].includes(lastChar)) {
         delay += 120; // Longer pause after sentence endings
       } else if ([',', ';', ':'].includes(lastChar)) {

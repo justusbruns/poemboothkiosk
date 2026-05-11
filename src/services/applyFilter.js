@@ -185,26 +185,30 @@ async function createVignetteOverlay(width, height, intensity) {
 }
 
 /**
- * Generate random noise grain texture
+ * Generate random noise grain texture centered around mid-gray (128).
+ *
+ * Overlay blend mode is brightness-neutral only when the overlay's RGB values are around 128.
+ * Pixels below 128 darken the base; above 128 lighten it. By generating noise that varies
+ * symmetrically around 128 we get the grain texture without shifting the photo's overall
+ * brightness — matching the CSS-filter look the dashboard editor preview uses (no grain at all).
  */
 async function createGrainTexture(width, height, intensity) {
-  // Generate random noise pattern
   const pixels = width * height;
   const channels = 4;
   const grainData = Buffer.alloc(pixels * channels);
 
-  // Create monochromatic noise
+  // Variation range around 128. intensity 0.25 → ±16, intensity 0.5 → ±32, intensity 1.0 → ±64.
+  const range = Math.round(intensity * 64);
+
   for (let i = 0; i < pixels * channels; i += channels) {
-    // Random noise value (0-255)
-    const noise = Math.floor(Math.random() * 255);
+    // Noise centered at 128, range [-range, +range]
+    const offset = Math.round((Math.random() - 0.5) * 2 * range);
+    const value = Math.max(0, Math.min(255, 128 + offset));
 
-    // Apply intensity scaling
-    const scaledNoise = Math.floor(noise * intensity * 0.5); // Scale down for subtlety
-
-    grainData[i] = scaledNoise;     // R
-    grainData[i + 1] = scaledNoise; // G
-    grainData[i + 2] = scaledNoise; // B
-    grainData[i + 3] = Math.floor(255 * intensity); // Alpha (controls overall opacity)
+    grainData[i] = value;     // R
+    grainData[i + 1] = value; // G
+    grainData[i + 2] = value; // B
+    grainData[i + 3] = 255;   // Alpha (overlay blend with neutral-gray noise = textured but no brightness shift)
   }
 
   return sharp(grainData, {

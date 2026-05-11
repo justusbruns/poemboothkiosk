@@ -618,6 +618,25 @@ h1, h2, h3, h4, h5, h6, p {
   display: block;
 }
 
+/* Markdown formatting inside poem text — headings keep body size, just bold + minimal gap */
+.poem-text h1,
+.poem-text h2,
+.poem-text h3 {
+  font-size: 1em;
+  font-weight: 700;
+  line-height: inherit;
+  margin: 0 0 0.15em 0;
+  font-family: inherit;
+  color: inherit;
+}
+.poem-text strong { font-weight: 700; }
+.poem-text em { font-style: italic; }
+
+/* Typing animation: every visible character lives inside a .poem-char span and starts hidden.
+   The typing loop adds .revealed one span at a time so markdown markers never appear. */
+.poem-text .poem-char { display: none; }
+.poem-text .poem-char.revealed { display: inline; }
+
 /* Center content for generated images */
 .poem-overlay.image-display {
   justify-content: center;

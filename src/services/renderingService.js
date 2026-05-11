@@ -1,8 +1,9 @@
 /**
  * Branded Image Rendering Engine for Kiosk
  *
- * Port from TypeScript backend (render-branded-image.ts)
- * Composites photos with branding templates, applying filters and text
+ * 1:1 port of poem-booth-renderer (fly.io dashboard renderer) so the kiosk
+ * produces identical output to the dashboard preview.
+ * Upstream: github.com/justusbruns/poem-booth-renderer src/renderer.ts + src/text-renderer.ts
  */
 
 const sharp = require('sharp');
@@ -16,38 +17,25 @@ class RenderingService {
     this.browser = null;
   }
 
-  /**
-   * Initialize Playwright browser (reusable for multiple renders)
-   */
   async initializeBrowser() {
     if (!this.browser) {
       console.log('[RENDER] Initializing Playwright browser...');
-      // SECURITY: Removed --no-sandbox for proper isolation
       this.browser = await chromium.launch({
         headless: true,
         args: ['--font-render-hinting=none']
       });
-      console.log('[RENDER] Browser initialized with sandbox enabled');
+      console.log('[RENDER] Browser initialized');
     }
     return this.browser;
   }
 
   /**
-   * Rotate image while maintaining exact dimensions
-   * Uses pad-rotate-extract algorithm from server renderer
-   *
-   * @param {Buffer} imageBuffer - Image buffer to rotate
-   * @param {number} angleDegrees - Rotation angle in degrees (0-360)
-   * @param {number} targetWidth - Original/target width to maintain
-   * @param {number} targetHeight - Original/target height to maintain
-   * @returns {Promise<Buffer>} Rotated image with same dimensions
+   * Rotate image while maintaining exact dimensions (pad-rotate-extract).
    */
   async rotateImageWithPadding(imageBuffer, angleDegrees, targetWidth, targetHeight) {
-    // 1. Calculate diagonal (how much space we need for rotation)
     const diagonal = Math.ceil(Math.sqrt(targetWidth * targetWidth + targetHeight * targetHeight));
-    const paddedSize = diagonal + 100; // Extra padding for safety
+    const paddedSize = diagonal + 100;
 
-    // 2. Create large transparent canvas
     const transparentCanvas = await sharp({
       create: {
         width: paddedSize,
@@ -57,7 +45,6 @@ class RenderingService {
       }
     }).png().toBuffer();
 
-    // 3. Center the photo on the large canvas
     const photoLeft = Math.round((paddedSize - targetWidth) / 2);
     const photoTop = Math.round((paddedSize - targetHeight) / 2);
 
@@ -66,19 +53,16 @@ class RenderingService {
       .png()
       .toBuffer();
 
-    // 4. Rotate the entire canvas around center
     const rotatedImage = await sharp(centeredImage)
       .rotate(angleDegrees, { background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .png()
       .toBuffer();
 
-    // 5. Get new dimensions after rotation (Sharp expands canvas)
     const rotatedMeta = await sharp(rotatedImage).metadata();
     if (!rotatedMeta.width || !rotatedMeta.height) {
       throw new Error('Failed to get rotated image dimensions');
     }
 
-    // 6. Extract center portion matching original dimensions
     const extractLeft = Math.round((rotatedMeta.width - targetWidth) / 2);
     const extractTop = Math.round((rotatedMeta.height - targetHeight) / 2);
 
@@ -96,22 +80,16 @@ class RenderingService {
   /**
    * Render branded poem image - MAIN ENTRY POINT
    *
-   * Port of backend renderBrandedImage()
-   *
    * @param {string} photoDataUrl - Photo as data URL
-   * @param {object} poem - Poem object with text property
-   * @param {object} branding - Branding template config
-   * @param {object} options - Optional rendering options
-   * @param {number} options.outputWidth - Override output width (for print quality)
-   * @param {number} options.outputHeight - Override output height (for print quality)
-   * @param {number} options.quality - JPEG quality (0-100, default 85 for web, 95 for print)
-   * @param {number} options.dpi - Output DPI (default from template, 300 for print)
+   * @param {object} poem - Poem object with .text
+   * @param {object} branding - Branding template (overrides constructor template)
+   * @param {object} options
+   * @param {'standard'|'hd'} options.quality - 'hd' overrides DPI to 300, else uses template.output_dpi
    */
   async renderPoemImage(photoDataUrl, poem, branding = null, options = {}) {
     try {
       console.log('[RENDER] Starting branded image render...');
 
-      // Validate inputs
       if (!photoDataUrl) {
         throw new Error('Photo data URL is required but was null or undefined');
       }
@@ -119,196 +97,138 @@ class RenderingService {
         throw new Error('Poem text is required but was null or undefined');
       }
 
-      console.log('[RENDER] Poem text length:', poem.text?.length || 0);
-      if (options.outputWidth || options.outputHeight) {
-        console.log('[RENDER] Custom output dimensions:', options.outputWidth, 'x', options.outputHeight);
-      }
-      if (options.quality) {
-        console.log('[RENDER] Custom JPEG quality:', options.quality);
-      }
-
       const template = branding || this.branding;
+      const quality = options.quality === 'hd' ? 'hd' : 'standard';
+      const outputDpi = quality === 'hd' ? 300 : (template.output_dpi || 72);
 
-      // Override template dimensions if options provided (for print quality)
-      const outputWidth = options.outputWidth || template.output_width;
-      const outputHeight = options.outputHeight || template.output_height;
-      const outputQuality = options.quality !== undefined ? options.quality : 85;
-      const outputDPI = options.dpi || template.output_dpi || 72;
-
-      // Calculate scale factor if output dimensions differ from template
-      const scaleX = outputWidth / template.output_width;
-      const scaleY = outputHeight / template.output_height;
-      const scale = Math.min(scaleX, scaleY); // Use uniform scale to maintain aspect ratio
-
-      // Create scaled template for rendering
-      const scaledTemplate = {
-        ...template,
-        output_width: outputWidth,
-        output_height: outputHeight,
-        photo_width: Math.round(template.photo_width * scale),
-        photo_height: Math.round(template.photo_height * scale),
-        photo_position_x: Math.round(template.photo_position_x * scale),
-        photo_position_y: Math.round(template.photo_position_y * scale),
-        photo_border_width: Math.round(template.photo_border_width * scale),
-        photo_border_radius: Math.round(template.photo_border_radius * scale),
-        text_width: Math.round(template.text_width * scale),
-        text_height: Math.round(template.text_height * scale),
-        text_position_x: Math.round(template.text_position_x * scale),
-        text_position_y: Math.round(template.text_position_y * scale),
-        font_size: Math.round(template.font_size * scale)
-      };
-
-      console.log('[RENDER] Scale factor:', scale.toFixed(3));
-      if (scale !== 1) {
-        console.log('[RENDER] Scaled dimensions:', {
-          photo: `${scaledTemplate.photo_width}x${scaledTemplate.photo_height}`,
-          text: `${scaledTemplate.text_width}x${scaledTemplate.text_height}`
-        });
-      }
+      console.log('[RENDER] Poem text length:', poem.text.length);
+      console.log('[RENDER] Quality:', quality, '| DPI:', outputDpi);
+      console.log('[RENDER] Output:', template.output_width, 'x', template.output_height);
+      console.log('[RENDER] Template diagnostics:');
+      console.log('  font_family:', template.font_family, '| weight:', template.font_weight, '| size:', template.font_size);
+      console.log('  text_align:', template.text_align, '| vertical:', template.text_vertical_align);
+      console.log('  text pos:', template.text_position_x, template.text_position_y, '| size:', template.text_width, 'x', template.text_height);
+      console.log('  photo pos:', template.photo_position_x, template.photo_position_y, '| size:', template.photo_width, 'x', template.photo_height);
+      console.log('  photo border:', template.photo_border_width, 'px', template.photo_border_color, '| radius:', template.photo_border_radius);
 
       // === STEP 1: Create Base Canvas ===
-      console.log('[RENDER] Creating base canvas:', {
-        width: outputWidth,
-        height: outputHeight,
-        background: scaledTemplate.background_color
-      });
-
-      const baseCanvas = await this.createBaseCanvas(scaledTemplate, outputWidth, outputHeight);
+      const baseCanvas = await this.createBaseCanvas(template);
 
       // === STEP 2: Process Photo with Filter ===
-      console.log('[RENDER] Processing photo with filter:', scaledTemplate.photo_filter);
+      console.log('[RENDER] Photo filter:', template.photo_filter);
 
-      // Convert data URL to buffer
       const base64Data = photoDataUrl.replace(/^data:image\/\w+;base64,/, '');
       const photoBuffer = Buffer.from(base64Data, 'base64');
-      console.log('[RENDER] Photo buffer size:', photoBuffer.length, 'bytes');
+
+      if (!photoBuffer || photoBuffer.length === 0) {
+        throw new Error('Invalid photo buffer: empty or null');
+      }
 
       let processedPhoto = photoBuffer;
 
-      // Apply filter if not 'none'
-      if (scaledTemplate.photo_filter && scaledTemplate.photo_filter !== 'none') {
-        console.log('[RENDER] Applying filter:', scaledTemplate.photo_filter);
-        const filterPreset = getFilterPreset(scaledTemplate.photo_filter);
+      if (template.photo_filter && template.photo_filter !== 'none') {
+        const filterPreset = getFilterPreset(template.photo_filter);
         processedPhoto = await applyPhotoFilter(photoBuffer, filterPreset);
-        console.log('[RENDER] Filter applied, buffer size:', processedPhoto.length, 'bytes');
-
-        // CRITICAL: Convert to buffer after filter (breaks pipeline to prevent Sharp bug)
+        // Break pipeline (filter may include vignette + grain composites)
         processedPhoto = await sharp(processedPhoto).toBuffer();
       }
 
-      // === STEP 3: Resize Photo to Template Dimensions ===
-      console.log(`[RENDER] Resizing photo to ${scaledTemplate.photo_width}x${scaledTemplate.photo_height}`);
+      // === STEP 3: Resize Photo ===
+      // Inset-border approach: when border > 0, photo content fits inside (w - 2bw, h - 2bw)
+      // so the final bordered photo exactly fills the template bounds (w, h) at position (x, y).
+      // Border is then drawn entirely in the outer ring — fully visible, doesn't cover photo content.
+      const photoBorderWidth = template.photo_border_width || 0;
+      const photoContentWidth = Math.max(1, template.photo_width - 2 * photoBorderWidth);
+      const photoContentHeight = Math.max(1, template.photo_height - 2 * photoBorderWidth);
+
       processedPhoto = await sharp(processedPhoto)
-        .resize(scaledTemplate.photo_width, scaledTemplate.photo_height, {
+        .resize(photoContentWidth, photoContentHeight, {
           fit: 'cover',
           position: 'center'
         })
-        .png() // Ensure PNG format for compositing
+        .png()
         .toBuffer();
 
-      console.log('[RENDER] Photo resized, buffer size:', processedPhoto.length, 'bytes');
-
-      // === STEP 4: Apply Photo Border (if specified) ===
-      if (scaledTemplate.photo_border_width > 0) {
-        console.log('[RENDER] Adding photo border');
+      // === STEP 4: Border / Border Radius ===
+      if (template.photo_border_width > 0) {
         processedPhoto = await this.addPhotoBorder(
           processedPhoto,
-          scaledTemplate.photo_border_width,
-          scaledTemplate.photo_border_color,
-          scaledTemplate.photo_border_radius
+          template.photo_border_width,
+          template.photo_border_color,
+          template.photo_border_radius,
+          template.photo_width,
+          template.photo_height
         );
-
-        // CRITICAL: Convert to buffer after border
         processedPhoto = await sharp(processedPhoto).toBuffer();
-      } else if (scaledTemplate.photo_border_radius > 0) {
-        // Apply border radius without border
-        console.log('[RENDER] Applying border radius');
+      } else if (template.photo_border_radius > 0) {
         processedPhoto = await this.applyBorderRadius(
           processedPhoto,
-          scaledTemplate.photo_border_radius
+          template.photo_border_radius
         );
-
-        // CRITICAL: Convert to buffer after border radius
         processedPhoto = await sharp(processedPhoto).toBuffer();
       }
 
-      // === STEP 4.5: Apply Photo Rotation (if specified) ===
-      if (scaledTemplate.photo_rotation && scaledTemplate.photo_rotation !== 0) {
-        console.log('[RENDER] Applying photo rotation:', scaledTemplate.photo_rotation, 'degrees');
+      // === STEP 4.5: Photo Rotation ===
+      if (template.photo_rotation && template.photo_rotation !== 0) {
+        console.log('[RENDER] Photo rotation:', template.photo_rotation, 'deg');
         processedPhoto = await this.rotateImageWithPadding(
           processedPhoto,
-          scaledTemplate.photo_rotation,
-          scaledTemplate.photo_width,
-          scaledTemplate.photo_height
+          template.photo_rotation,
+          template.photo_width,
+          template.photo_height
         );
-        console.log('[RENDER] Photo rotated, buffer size:', processedPhoto.length, 'bytes');
       }
 
       // === STEP 5: Composite Photo onto Canvas ===
-      console.log('[RENDER] Compositing photo at position:', {
-        x: scaledTemplate.photo_position_x,
-        y: scaledTemplate.photo_position_y
-      });
-
-      // CRITICAL: Ensure photo has alpha channel before composite
+      // Bordered photo exactly fills the template bounds (photo_width × photo_height) — composite directly at (x, y).
       processedPhoto = await sharp(processedPhoto).ensureAlpha().toBuffer();
 
       let pipeline = sharp(baseCanvas).composite([
         {
           input: processedPhoto,
-          top: scaledTemplate.photo_position_y,
-          left: scaledTemplate.photo_position_x
+          top: template.photo_position_y,
+          left: template.photo_position_x
         }
       ]);
 
-      console.log('[RENDER] Photo composited onto canvas');
-
-      // CRITICAL: Convert to buffer after photo composite
       const canvasWithPhoto = await pipeline.toBuffer();
       pipeline = sharp(canvasWithPhoto);
 
-      // === STEP 6: Render Text Overlay ===
-      console.log('[RENDER] Rendering text overlay with Playwright');
-
-      const textOverlay = await this.renderTextWithPlaywright(poem.text, scaledTemplate);
+      // === STEP 6: Text Overlay ===
+      const textOverlay = await this.renderTextWithPlaywright(poem.text, template);
 
       pipeline = pipeline.composite([
         {
           input: textOverlay,
-          top: scaledTemplate.text_position_y,
-          left: scaledTemplate.text_position_x
+          top: template.text_position_y,
+          left: template.text_position_x
         }
       ]);
 
-      // === STEP 7: Apply Output Settings ===
-      console.log('[RENDER] Applying output settings:', {
-        format: 'jpeg',
-        quality: outputQuality,
-        dpi: outputDPI,
-        dimensions: `${outputWidth}x${outputHeight}`
-      });
+      // === STEP 7: Output Format & DPI ===
+      // For web upload (quality: 'standard'), force JPEG to stay under backend's body size limit.
+      // For print (quality: 'hd'), respect template's output_format (PNG keeps crisp print quality).
+      const templateFormat = template.output_format || 'jpeg';
+      const outputFormat = quality === 'hd' ? templateFormat : 'jpeg';
+      console.log('[RENDER] Output format:', outputFormat, '(template wanted:', templateFormat + ')');
 
-      // Always use JPEG format (PNG creates oversized files)
-      // Quality: 85 for web (2MB), 95 for print (professional quality)
-      pipeline = pipeline.jpeg({
-        quality: outputQuality,
-        mozjpeg: true,  // Better compression algorithm
-        progressive: true  // Progressive loading for web
-      });
+      if (outputFormat === 'jpg' || outputFormat === 'jpeg') {
+        pipeline = pipeline.jpeg({
+          quality: quality === 'hd' ? 95 : 85,
+          mozjpeg: true
+        });
+      } else {
+        pipeline = pipeline.png({
+          compressionLevel: 9
+        });
+      }
 
-      console.log(`[RENDER] Using JPEG format with quality ${outputQuality}`);
-
-      // Set DPI metadata
-      pipeline = pipeline.withMetadata({
-        density: outputDPI
-      });
+      pipeline = pipeline.withMetadata({ density: outputDpi });
 
       const result = await pipeline.toBuffer();
 
-      // Log file size
       const fileSizeMB = (result.length / (1024 * 1024)).toFixed(2);
-      console.log('[RENDER] Branded image rendered successfully');
-      console.log('[RENDER] Final size:', fileSizeMB, 'MB');
+      console.log('[RENDER] Branded image rendered:', fileSizeMB, 'MB');
 
       return result;
     } catch (error) {
@@ -318,104 +238,100 @@ class RenderingService {
   }
 
   /**
-   * Create the base canvas (background layer)
+   * Create the base canvas (background layer).
+   * Kiosk-specific: falls back to color background if image fetch fails (offline-friendly).
    */
-  async createBaseCanvas(template, width = null, height = null) {
-    const canvasWidth = width || template.output_width;
-    const canvasHeight = height || template.output_height;
-
-    console.log('[RENDER] Background type:', template.background_type);
-    console.log('[RENDER] Background image URL:', template.background_image_url || 'NONE');
-    console.log('[RENDER] Background color:', template.background_color);
-    console.log('[RENDER] Canvas dimensions:', canvasWidth, 'x', canvasHeight);
+  async createBaseCanvas(template) {
+    const { output_width, output_height } = template;
 
     if (template.background_type === 'color' || !template.background_image_url) {
-      // Solid color background
       const color = template.background_color || '#ffffff';
-      console.log('[RENDER] Using solid color background:', color);
+      console.log('[RENDER] Solid color background:', color);
 
       return sharp({
         create: {
-          width: canvasWidth,
-          height: canvasHeight,
+          width: output_width,
+          height: output_height,
           channels: 4,
           background: color
         }
       })
-        .ensureAlpha()  // Ensure canvas has proper alpha channel
+        .ensureAlpha()
         .png()
         .toBuffer();
-    } else {
-      // Image background - FETCH AND USE IT
-      console.log('[RENDER] Fetching background image from:', template.background_image_url);
+    }
 
-      try {
-        // Fetch the background image
-        const https = require('https');
-        const http = require('http');
-        const url = new URL(template.background_image_url);
-        const protocol = url.protocol === 'https:' ? https : http;
+    console.log('[RENDER] Fetching background image:', template.background_image_url);
 
-        const imageBuffer = await new Promise((resolve, reject) => {
-          protocol.get(template.background_image_url, (res) => {
-            const chunks = [];
-            res.on('data', (chunk) => chunks.push(chunk));
-            res.on('end', () => resolve(Buffer.concat(chunks)));
-            res.on('error', reject);
-          }).on('error', reject);
-        });
+    try {
+      const https = require('https');
+      const http = require('http');
+      const url = new URL(template.background_image_url);
+      const protocol = url.protocol === 'https:' ? https : http;
 
-        console.log('[RENDER] Background image fetched, size:', imageBuffer.length, 'bytes');
+      const imageBuffer = await new Promise((resolve, reject) => {
+        protocol.get(template.background_image_url, (res) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+          res.on('error', reject);
+        }).on('error', reject);
+      });
 
-        // Resize and fit background image to canvas dimensions
-        return sharp(imageBuffer)
-          .resize(canvasWidth, canvasHeight, {
-            fit: 'cover',
-            position: 'center'
-          })
-          .ensureAlpha()
-          .png()
-          .toBuffer();
-      } catch (error) {
-        console.error('[RENDER] Failed to fetch background image:', error);
-        console.warn('[RENDER] Falling back to color background');
-
-        const color = template.background_color || '#ffffff';
-        return sharp({
-          create: {
-            width: canvasWidth,
-            height: canvasHeight,
-            channels: 4,
-            background: color
-          }
+      return sharp(imageBuffer)
+        .resize(output_width, output_height, {
+          fit: 'cover',
+          position: 'center'
         })
-          .ensureAlpha()
-          .png()
-          .toBuffer();
-      }
+        .toBuffer();
+    } catch (error) {
+      console.error('[RENDER] Background image fetch failed:', error.message);
+      console.warn('[RENDER] Falling back to color background');
+
+      const color = template.background_color || '#ffffff';
+      return sharp({
+        create: {
+          width: output_width,
+          height: output_height,
+          channels: 4,
+          background: color
+        }
+      })
+        .ensureAlpha()
+        .png()
+        .toBuffer();
     }
   }
 
   /**
-   * Add border to photo with rounded corners
+   * Inset-border approach: draws the border entirely inside the template bounds (photo_width × photo_height).
+   * Caller has already resized photo content to (outerW - 2bw, outerH - 2bw) so we can drop it into a
+   * (outerW × outerH) frame with `bw` thick border ring around it.
+   *
+   * Result: total bounds match `photo_width × photo_height` at the configured position — no overflow,
+   * no border covering the photo. Border thickness equals `borderWidth` exactly.
    */
-  async addPhotoBorder(photoBuffer, borderWidth, borderColor, borderRadius) {
+  async addPhotoBorder(photoBuffer, borderWidth, borderColor, borderRadius, outerW, outerH) {
     const photoMeta = await sharp(photoBuffer).metadata();
     if (!photoMeta.width || !photoMeta.height) {
       throw new Error('Invalid photo dimensions');
     }
 
-    const totalWidth = photoMeta.width + borderWidth * 2;
-    const totalHeight = photoMeta.height + borderWidth * 2;
+    // Apply rounded corners to the photo content (inner radius = outer radius - border width)
+    let maskedPhoto = photoBuffer;
+    if (borderRadius > 0) {
+      const innerRadius = Math.max(0, borderRadius - borderWidth);
+      maskedPhoto = await this.applyBorderRadius(photoBuffer, innerRadius);
+    }
 
-    // Create border background with rounded corners
+    // Outer frame: filled rectangle in border color with rounded corners — same size as template bounds.
     const borderSvg = `
-      <svg width="${totalWidth}" height="${totalHeight}">
+      <svg width="${outerW}" height="${outerH}">
         <rect
           x="0"
           y="0"
-          width="${totalWidth}"
-          height="${totalHeight}"
+          width="${outerW}"
+          height="${outerH}"
           rx="${borderRadius}"
           ry="${borderRadius}"
           fill="${borderColor}"
@@ -423,36 +339,20 @@ class RenderingService {
       </svg>
     `;
 
-    // Apply border radius to photo if specified
-    let maskedPhoto = photoBuffer;
-    if (borderRadius > 0) {
-      const innerRadius = Math.max(0, borderRadius - borderWidth);
-      maskedPhoto = await this.applyBorderRadius(photoBuffer, innerRadius);
-    }
-
-    // Composite photo on top of border
     return sharp(Buffer.from(borderSvg))
       .composite([
-        {
-          input: maskedPhoto,
-          top: borderWidth,
-          left: borderWidth
-        }
+        { input: maskedPhoto, top: borderWidth, left: borderWidth }
       ])
       .png()
       .toBuffer();
   }
 
-  /**
-   * Apply rounded corners to an image
-   */
   async applyBorderRadius(imageBuffer, radius) {
     const meta = await sharp(imageBuffer).metadata();
     if (!meta.width || !meta.height) {
       throw new Error('Invalid image dimensions');
     }
 
-    // Create rounded rectangle mask
     const mask = Buffer.from(
       `<svg width="${meta.width}" height="${meta.height}">
         <rect
@@ -468,7 +368,7 @@ class RenderingService {
     );
 
     return sharp(imageBuffer)
-      .ensureAlpha() // Ensure alpha channel exists before applying mask
+      .ensureAlpha()
       .composite([
         {
           input: mask,
@@ -480,9 +380,8 @@ class RenderingService {
   }
 
   /**
-   * Render text overlay as PNG buffer using Playwright
-   *
-   * Port of backend renderTextWithPlaywright()
+   * Render text overlay using Playwright.
+   * CSS handles wrapping; we measure scrollHeight and reduce font size if it overflows.
    */
   async renderTextWithPlaywright(text, template) {
     try {
@@ -495,113 +394,169 @@ class RenderingService {
         }
       });
 
-      // Generate HTML with text and fonts
-      const { html, fontSize, lines } = this.generateHTML(text, template);
+      try {
+        let fontSize = template.font_size;
+        const targetFont = template.font_family || 'Georgia';
+        const targetWeight = template.font_weight || 400;
+        let html = this.generateHTML(text, template, fontSize);
 
-      console.log(`[RENDER] Text auto-sized to ${fontSize}px (${lines.length} lines)`);
+        // Available height accounts for 20px body padding (matches Konva's text padding={20})
+        const availableHeight = template.text_height - 40;
 
-      // Load HTML content
-      await page.setContent(html, { waitUntil: 'networkidle' });
+        await page.setContent(html, {
+          waitUntil: 'networkidle',
+          timeout: 15000
+        });
 
-      // Wait for fonts to load
-      await page.evaluate(() => document.fonts.ready);
+        // Explicit font load: triggers download of the unicode subset that contains the poem text.
+        // Without this, @font-face declarations stay "unloaded" forever (display=block alone isn't enough
+        // when Playwright takes the screenshot before any rendering has occurred).
+        try {
+          await page.evaluate(({ weight, size, family, sampleText }) => {
+            return document.fonts.load(`${weight} ${size}px "${family}"`, sampleText)
+              .then(() => document.fonts.ready);
+          }, { weight: targetWeight, size: fontSize, family: targetFont, sampleText: text.substring(0, 200) });
+        } catch (fontError) {
+          console.warn('[RENDER] Font load error:', fontError.message);
+        }
 
-      console.log(`[RENDER] Fonts loaded: ${template.font_family}`);
+        // Verify the specific font is now loaded
+        const fontProbe = `${targetWeight} ${fontSize}px "${targetFont}"`;
+        const fontDiag = await page.evaluate((probe) => {
+          const fonts = Array.from(document.fonts).map(f => ({
+            family: f.family.replace(/['"]/g, ''),
+            status: f.status,
+            weight: f.weight
+          }));
+          const anyLoaded = fonts.some(f => f.status === 'loaded');
+          return { fonts: fonts.slice(0, 3), totalDeclared: fonts.length, anyLoaded, available: document.fonts.check(probe) };
+        }, fontProbe);
+        console.log('[RENDER] Font diagnostics:', JSON.stringify(fontDiag));
+        if (!fontDiag.anyLoaded) {
+          console.warn(`[RENDER] ⚠️  Font "${targetFont}" NOT loaded — falling back to system font!`);
+        }
 
-      // Take screenshot of the page
-      const screenshot = await page.screenshot({
-        type: 'png',
-        omitBackground: true, // Transparent background
-        animations: 'disabled'
-      });
+        // Auto-size: measure scrollHeight, reduce font size if overflowing
+        const maxAttempts = 10;
+        for (let i = 0; i < maxAttempts && fontSize > 12; i++) {
+          const textHeight = await page.evaluate(`
+            (function() {
+              var el = document.getElementById('text-container');
+              return el ? el.scrollHeight : 0;
+            })()
+          `);
 
-      await page.close();
+          if (textHeight <= availableHeight) break;
 
-      console.log(`[RENDER] Text rendered: ${screenshot.length} bytes`);
+          fontSize -= 2;
+          console.log(`[RENDER] Text overflows (${textHeight}px > ${availableHeight}px), reducing to ${fontSize}px`);
+          html = this.generateHTML(text, template, fontSize);
+          await page.setContent(html, {
+            waitUntil: 'domcontentloaded',
+            timeout: 10000
+          });
+          try {
+            await Promise.race([
+              page.evaluate('document.fonts.ready'),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Font loading timeout')), 2000)
+              )
+            ]);
+          } catch { /* continue with fallback */ }
+        }
 
-      return screenshot;
+        console.log(`[RENDER] Text rendered at ${fontSize}px`);
+
+        const screenshot = await page.screenshot({
+          type: 'png',
+          omitBackground: true,
+          animations: 'disabled',
+          timeout: 10000
+        });
+
+        return screenshot;
+      } finally {
+        await page.close();
+      }
     } catch (error) {
       console.error('[RENDER] Text rendering error:', error);
       throw error;
     }
   }
 
-  /**
-   * SECURITY: HTML-escape text to prevent injection
-   */
   escapeHtml(text) {
     if (!text) return '';
     return text
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+      .replace(/>/g, '&gt;');
   }
 
   /**
-   * Generate HTML for text rendering with Playwright
-   *
-   * Port of backend generateHTML()
+   * Convert minimal markdown into safe HTML so poems with `# heading`, `**bold**`, and `*italic*`
+   * render with proper typography in the final image.
+   * HTML special chars are escaped first to prevent injection from AI-generated poem text.
    */
-  generateHTML(text, template) {
-    // SECURITY: Escape HTML to prevent injection attacks
-    const safeText = this.escapeHtml(text);
+  parseMarkdownPoem(text) {
+    if (!text) return '';
+    let html = this.escapeHtml(text);
 
-    // Auto-size text to fit
-    const { lines, fontSize } = this.autoSizeAndWrapText(
-      safeText,
-      template.text_width,
-      template.text_height,
-      template.font_size,
-      template.line_height
-    );
+    // Headings (line must start with #)
+    html = html.split('\n').map(line => {
+      if (line.startsWith('### ')) return `<h3>${line.slice(4)}</h3>`;
+      if (line.startsWith('## ')) return `<h2>${line.slice(3)}</h2>`;
+      if (line.startsWith('# ')) return `<h1>${line.slice(2)}</h1>`;
+      return line;
+    }).join('\n');
 
-    // Calculate vertical alignment offset
-    const lineSpacing = fontSize * template.line_height;
-    const totalTextHeight = lines.length * lineSpacing;
+    // Inline emphasis — ** before * so bold wins over italic
+    html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+    html = html.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
 
-    // Default to center alignment if not specified by backend
-    const verticalAlign = template.text_vertical_align || 'center';
-    let topOffset = 0;
+    return html;
+  }
 
-    console.log('[RENDER] Text vertical align from template:', template.text_vertical_align);
-    console.log('[RENDER] Text vertical align (resolved):', verticalAlign);
-    console.log('[RENDER] Text horizontal align:', template.text_align);
-    console.log('[RENDER] Text area height:', template.text_height);
-    console.log('[RENDER] Total text height:', totalTextHeight);
+  /**
+   * Generate HTML for text rendering.
+   * CSS does wrapping (no JS pre-wrapping); flexbox handles vertical/horizontal alignment.
+   */
+  generateHTML(text, template, fontSize) {
+    const safeText = this.parseMarkdownPoem(text);
 
-    if (verticalAlign === 'center') {
-      topOffset = (template.text_height - totalTextHeight) / 2;
-    } else if (verticalAlign === 'bottom') {
-      topOffset = template.text_height - totalTextHeight;
-    }
-    // 'top' alignment: topOffset remains 0
-
-    console.log('[RENDER] Vertical offset (topOffset):', topOffset);
-
-    // Build text shadow CSS if enabled
     const textShadowCSS = template.text_shadow_enabled
       ? `text-shadow: 0px 2px ${template.text_shadow_blur || 4}px ${template.text_shadow_color || '#000000'}80;`
       : '';
 
-    // Build background CSS if enabled
+    // Background fills the padded inner area when enabled (the 20px padding is from the text box, not the background).
     const backgroundCSS = template.text_background_enabled
-      ? `background: ${template.text_background_color || '#ffffff99'}; padding: 20px; border-radius: 8px;`
+      ? `background: ${template.text_background_color || '#ffffff99'}; border-radius: 8px;`
       : '';
 
-    // Use default font if font_family is null/undefined
+    const alignItems = template.text_vertical_align === 'center' ? 'center'
+      : template.text_vertical_align === 'bottom' ? 'flex-end'
+      : 'flex-start';
+
+    const justifyContent = template.text_align === 'center' ? 'center'
+      : template.text_align === 'right' ? 'flex-end'
+      : 'flex-start';
+
     const fontFamily = template.font_family || 'Georgia';
     const fontWeight = template.font_weight || 400;
 
-    const html = `
+    // Konva's TextContainer uses padding={20} → text content area is (w-40) × (h-40).
+    // Match that so kiosk render matches the dashboard editor preview.
+    const TEXT_BOX_PADDING = 20;
+
+    // display=block forces the browser to wait for the font before rendering text
+    // (display=swap would render with fallback first, leading to wrong font in screenshot)
+    return `
 <!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=${fontFamily.replace(/\s+/g, '+')}:wght@${fontWeight}&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=${fontFamily.replace(/\s+/g, '+')}:wght@${fontWeight}&display=block" rel="stylesheet">
   <style>
     * {
       margin: 0;
@@ -611,11 +566,12 @@ class RenderingService {
     body {
       width: ${template.text_width}px;
       height: ${template.text_height}px;
+      padding: ${TEXT_BOX_PADDING}px;
       overflow: hidden;
       background: transparent;
       display: flex;
-      align-items: flex-start;
-      justify-content: ${template.text_align};
+      align-items: ${alignItems};
+      justify-content: ${justifyContent};
     }
     #text-container {
       font-family: '${fontFamily}', serif;
@@ -626,85 +582,32 @@ class RenderingService {
       line-height: ${template.line_height};
       letter-spacing: ${template.letter_spacing}px;
       white-space: pre-line;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
       ${textShadowCSS}
       ${backgroundCSS}
-      padding-top: ${topOffset}px;
       width: 100%;
     }
+    /* Markdown styling — headings inherit body font-size, just bold + tiny breathing room below */
+    #text-container h1,
+    #text-container h2,
+    #text-container h3 {
+      font-size: 1em;
+      font-weight: 700;
+      line-height: inherit;
+      margin: 0 0 0.15em 0;
+    }
+    #text-container strong { font-weight: 700; }
+    #text-container em { font-style: italic; }
   </style>
 </head>
 <body>
-  <div id="text-container">${lines.join('\n')}</div>
+  <div id="text-container">${safeText}</div>
 </body>
 </html>
     `.trim();
-
-    return { html, lines, fontSize };
   }
 
-  /**
-   * Auto-size text to fit within bounds
-   *
-   * Port of backend autoSizeAndWrapText()
-   */
-  autoSizeAndWrapText(text, maxWidth, maxHeight, startFontSize, lineHeight) {
-    // Rough estimate: average character width is ~0.6 of font size
-    const avgCharWidth = startFontSize * 0.6;
-    const maxCharsPerLine = Math.floor(maxWidth / avgCharWidth);
-
-    // Split on explicit newlines to preserve poem structure
-    const explicitLines = text.split('\n');
-    const wrappedLines = [];
-
-    // Wrap each explicit line
-    for (const line of explicitLines) {
-      if (line.trim() === '') {
-        wrappedLines.push('');
-        continue;
-      }
-
-      const words = line.split(/\s+/);
-      let currentLine = '';
-
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
-
-        if (testLine.length > maxCharsPerLine && currentLine) {
-          wrappedLines.push(currentLine);
-          currentLine = word;
-        } else {
-          currentLine = testLine;
-        }
-      }
-
-      if (currentLine) {
-        wrappedLines.push(currentLine);
-      }
-    }
-
-    // Calculate total height and reduce font size if needed
-    let fontSize = startFontSize;
-    const MIN_FONT_SIZE = 20;
-
-    while (fontSize >= MIN_FONT_SIZE) {
-      const lineSpacing = fontSize * lineHeight;
-      const totalHeight = wrappedLines.length * lineSpacing;
-
-      if (totalHeight <= maxHeight) {
-        return { lines: wrappedLines, fontSize };
-      }
-
-      fontSize -= 2;
-    }
-
-    // Force fit at minimum size
-    console.warn(`[RENDER] Text too long - forcing minimum ${MIN_FONT_SIZE}px`);
-    return { lines: wrappedLines, fontSize: MIN_FONT_SIZE };
-  }
-
-  /**
-   * Cleanup
-   */
   async destroy() {
     if (this.browser) {
       console.log('[RENDER] Closing browser...');

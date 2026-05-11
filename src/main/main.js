@@ -561,13 +561,7 @@ ipcMain.handle('api:log-print', async (event, sessionId) => {
 // Render poem image
 ipcMain.handle('render:poem-image', async (event, photoDataUrl, poem, branding, options = {}) => {
   try {
-    console.log('[MAIN] Rendering poem image...');
-    if (options.outputWidth || options.outputHeight) {
-      console.log('[MAIN] Custom dimensions requested:', options.outputWidth, 'x', options.outputHeight);
-    }
-    if (options.quality) {
-      console.log('[MAIN] Custom quality requested:', options.quality);
-    }
+    console.log('[MAIN] Rendering poem image, quality:', options.quality || 'standard');
 
     if (!renderingService) {
       renderingService = new RenderingService(branding || kioskConfig?.branding);
