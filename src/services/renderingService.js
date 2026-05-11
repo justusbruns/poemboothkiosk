@@ -403,21 +403,27 @@ class RenderingService {
         // Available height accounts for 20px body padding (matches Konva's text padding={20})
         const availableHeight = template.text_height - 40;
 
+        // Use domcontentloaded so we never hang on slow CDN — we explicitly wait for the
+        // font afterwards with our own timeout. networkidle can stall on kiosks with
+        // intermittent connections.
         await page.setContent(html, {
-          waitUntil: 'networkidle',
-          timeout: 15000
+          waitUntil: 'domcontentloaded',
+          timeout: 10000
         });
 
-        // Explicit font load: triggers download of the unicode subset that contains the poem text.
-        // Without this, @font-face declarations stay "unloaded" forever (display=block alone isn't enough
-        // when Playwright takes the screenshot before any rendering has occurred).
+        // Explicit font load: triggers download of the unicode subset containing the poem text.
+        // Wrapped in Promise.race so we never block longer than 6s — display=swap then renders
+        // text in fallback font if the web font is unavailable (offline kiosk, blocked CDN).
         try {
-          await page.evaluate(({ weight, size, family, sampleText }) => {
-            return document.fonts.load(`${weight} ${size}px "${family}"`, sampleText)
-              .then(() => document.fonts.ready);
-          }, { weight: targetWeight, size: fontSize, family: targetFont, sampleText: text.substring(0, 200) });
+          await Promise.race([
+            page.evaluate(({ weight, size, family, sampleText }) => {
+              return document.fonts.load(`${weight} ${size}px "${family}"`, sampleText)
+                .then(() => document.fonts.ready);
+            }, { weight: targetWeight, size: fontSize, family: targetFont, sampleText: text.substring(0, 200) }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('Font load timeout')), 6000))
+          ]);
         } catch (fontError) {
-          console.warn('[RENDER] Font load error:', fontError.message);
+          console.warn('[RENDER] Font load error (will use system fallback):', fontError.message);
         }
 
         // Verify the specific font is now loaded
@@ -547,8 +553,11 @@ class RenderingService {
     // Match that so kiosk render matches the dashboard editor preview.
     const TEXT_BOX_PADDING = 20;
 
-    // display=block forces the browser to wait for the font before rendering text
-    // (display=swap would render with fallback first, leading to wrong font in screenshot)
+    // display=swap: render with fallback immediately while the web font loads.
+    // We explicitly wait for document.fonts.load() to resolve before screenshot,
+    // so the web font WILL be active in the screenshot. swap is the safety net —
+    // if the font request fails (offline kiosk), text is still visible in fallback
+    // instead of invisible during display=block's block period.
     return `
 <!DOCTYPE html>
 <html>
@@ -556,7 +565,7 @@ class RenderingService {
   <meta charset="UTF-8">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=${fontFamily.replace(/\s+/g, '+')}:wght@${fontWeight}&display=block" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=${fontFamily.replace(/\s+/g, '+')}:wght@${fontWeight}&display=swap" rel="stylesheet">
   <style>
     * {
       margin: 0;

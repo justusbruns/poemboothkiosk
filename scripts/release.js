@@ -64,7 +64,7 @@ async function release() {
 
   // 5. Commit and push
   console.log('\n=== Committing and pushing ===');
-  run('git add package.json package-lock.json');
+  run('git add package.json');
   run(`git commit -m "release: ${tag}"`);
   run('git push origin main');
 
