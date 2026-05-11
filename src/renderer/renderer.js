@@ -1681,32 +1681,22 @@ function parseMarkdownPoem(text) {
 }
 
 /**
- * Build a DOM tree from the markdown-rendered poem where each visible character is wrapped
- * in its own `<span class="poem-char">` with `display: none`. Reveal the spans in order to
- * animate the typing effect WITHOUT ever showing markdown markers (`#`, `*`, `**`).
+ * Strip markdown markers so the typing animation can run on plain text.
+ * Per-char `<span>` wrapping breaks browser word-wrap (line break can occur between
+ * any two spans, making the poem look shrunk). Typing plain text via textContent
+ * keeps natural word wrap; we swap in formatted HTML once typing completes.
  */
-function buildHiddenPoemDom(parentEl, poemText) {
-  parentEl.innerHTML = parseMarkdownPoem(poemText);
-
-  function wrapTextNodes(node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      const text = node.textContent;
-      if (!text) return;
-      const frag = document.createDocumentFragment();
-      for (const ch of text) {
-        const span = document.createElement('span');
-        span.className = 'poem-char';
-        span.textContent = ch;
-        frag.appendChild(span);
-      }
-      node.parentNode.replaceChild(frag, node);
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      Array.from(node.childNodes).forEach(wrapTextNodes);
-    }
-  }
-  wrapTextNodes(parentEl);
-
-  return parentEl.querySelectorAll('.poem-char');
+function stripMarkdownMarkers(text) {
+  if (!text) return '';
+  return text
+    .split('\n').map(line => {
+      if (line.startsWith('### ')) return line.slice(4);
+      if (line.startsWith('## ')) return line.slice(3);
+      if (line.startsWith('# ')) return line.slice(2);
+      return line;
+    }).join('\n')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1');
 }
 
 function showPoemWithTypingEffect(poemText) {
@@ -1728,10 +1718,12 @@ function showPoemWithTypingEffect(poemText) {
   elements.resultPhoto.src = state.currentPhoto;
   elements.resultPhoto.classList.add('blurred');
 
-  // Pre-render full markdown HTML with every visible character wrapped in a hidden span.
-  // The typing animation then reveals one span at a time — markdown markers are never visible.
+  // Type the plain (markers-stripped) version of the poem character by character so
+  // browser word wrap stays natural. After typing completes we swap in the formatted
+  // markdown HTML so headings/bold/italic appear. Markers are never visible.
+  const plainPoem = stripMarkdownMarkers(poemText);
+  elements.poemText.textContent = '';
   elements.poemText.classList.remove('typing-complete');
-  const charSpans = buildHiddenPoemDom(elements.poemText, poemText);
 
   // Remove image-display class when showing poem text (restores poem layout)
   const poemOverlay = elements.poemText.parentElement;
@@ -1739,8 +1731,8 @@ function showPoemWithTypingEffect(poemText) {
     poemOverlay.classList.remove('image-display');
   }
 
-  // Calculate and apply optimal font size
-  const fontSize = calculatePoemFontSize(poemText);
+  // Calculate and apply optimal font size based on the plain text (what's actually displayed)
+  const fontSize = calculatePoemFontSize(plainPoem);
   elements.poemText.style.fontSize = fontSize;
   console.log(`[RENDERER] Applied font size: ${fontSize}`);
 
@@ -1763,9 +1755,9 @@ function showPoemWithTypingEffect(poemText) {
       return; // Abort - a new typing session has started
     }
 
-    if (charIndex < charSpans.length) {
-      charSpans[charIndex].classList.add('revealed');
-      const lastChar = charSpans[charIndex].textContent;
+    if (charIndex < plainPoem.length) {
+      elements.poemText.textContent += plainPoem.charAt(charIndex);
+      const lastChar = plainPoem.charAt(charIndex);
       charIndex++;
 
       // Calculate delay with human-like variation
@@ -1786,7 +1778,8 @@ function showPoemWithTypingEffect(poemText) {
       // Store timeout ID in state so it can be cancelled
       state.typingTimeoutId = setTimeout(typeNextChar, delay);
     } else {
-      // Typing complete
+      // Typing complete — swap plain text for markdown-formatted HTML so headings/bold/italic appear
+      elements.poemText.innerHTML = parseMarkdownPoem(poemText);
       elements.poemText.classList.add('typing-complete');
       state.typingTimeoutId = null;
     }

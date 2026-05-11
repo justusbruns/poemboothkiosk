@@ -2,9 +2,53 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-// Defense in depth: log unhandled rejections instead of crashing the kiosk process.
-// Node 18 (Electron 28) terminates the process on unhandled rejection by default —
-// a single stale setTimeout in a Promise.race is enough to kill a long-running kiosk.
+// === Persistent file logging ===
+// Mirror everything we console.log/warn/error to a file under userData so we can
+// debug remote kiosks. One file per session, plus a "latest.log" symlink-style copy
+// for easy access. Older session files are pruned to last 5.
+const LOG_DIR = path.join(app.getPath('userData'), 'logs');
+try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+
+const sessionStamp = new Date().toISOString().replace(/[:.]/g, '-');
+const SESSION_LOG = path.join(LOG_DIR, `session-${sessionStamp}.log`);
+const LATEST_LOG = path.join(LOG_DIR, 'latest.log');
+const logStream = fs.createWriteStream(SESSION_LOG, { flags: 'a' });
+
+// Prune to last 5 session files
+try {
+  const sessions = fs.readdirSync(LOG_DIR)
+    .filter(f => f.startsWith('session-') && f.endsWith('.log'))
+    .map(f => ({ name: f, mtime: fs.statSync(path.join(LOG_DIR, f)).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  sessions.slice(5).forEach(s => {
+    try { fs.unlinkSync(path.join(LOG_DIR, s.name)); } catch (e) { /* ignore */ }
+  });
+} catch (e) { /* ignore */ }
+
+const writeLog = (level, args) => {
+  try {
+    const line = new Date().toISOString() + ' [' + level + '] ' +
+      args.map(a => {
+        if (a instanceof Error) return a.stack || a.message;
+        if (typeof a === 'string') return a;
+        try { return JSON.stringify(a); } catch (e) { return String(a); }
+      }).join(' ') + '\n';
+    logStream.write(line);
+    try { fs.appendFileSync(LATEST_LOG, line); } catch (e) { /* ignore */ }
+  } catch (e) { /* never let logging crash the app */ }
+};
+
+const origLog = console.log;
+const origWarn = console.warn;
+const origError = console.error;
+console.log = (...args) => { origLog(...args); writeLog('LOG', args); };
+console.warn = (...args) => { origWarn(...args); writeLog('WARN', args); };
+console.error = (...args) => { origError(...args); writeLog('ERROR', args); };
+
+console.log('=== Session started, log file:', SESSION_LOG);
+
+// Defense in depth: log unhandled rejections / exceptions instead of crashing.
+// Node 18 (Electron 28) terminates the process on unhandled rejection by default.
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[MAIN] Unhandled promise rejection:', reason);
 });
@@ -101,12 +145,27 @@ async function createWindow() {
   // Open DevTools in development mode
   if (IS_DEV) {
     mainWindow.webContents.openDevTools();
-
-    // Pipe renderer console logs to terminal
-    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
-      console.log(`[RENDERER] ${message}`);
-    });
   }
+
+  // Pipe renderer console logs into main process (so they hit the file logger too)
+  // Levels: 0=verbose, 1=info, 2=warning, 3=error
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    const tag = `[RENDERER] ${message}`;
+    if (level >= 3) console.error(tag);
+    else if (level === 2) console.warn(tag);
+    else console.log(tag);
+  });
+
+  // Capture renderer process crashes — these are silent otherwise and look like "kiosk just froze"
+  mainWindow.webContents.on('render-process-gone', (event, details) => {
+    console.error('[RENDERER-GONE]', JSON.stringify(details));
+  });
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('[RENDERER] webContents became unresponsive');
+  });
+  mainWindow.webContents.on('responsive', () => {
+    console.log('[RENDERER] webContents responsive again');
+  });
 
   // Prevent navigation away from app
   mainWindow.webContents.on('will-navigate', (event, url) => {
