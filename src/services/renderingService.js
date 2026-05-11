@@ -412,18 +412,25 @@ class RenderingService {
         });
 
         // Explicit font load: triggers download of the unicode subset containing the poem text.
-        // Wrapped in Promise.race so we never block longer than 6s — display=swap then renders
-        // text in fallback font if the web font is unavailable (offline kiosk, blocked CDN).
+        // We give it up to 6s; if it doesn't resolve, display=swap renders text in the fallback
+        // font instead (offline kiosk, blocked CDN).
+        // CRITICAL: clear the timeout in finally — leaking the setTimeout would reject a stale
+        // promise after the race already settled, which Node 18 (Electron 28) treats as an
+        // unhandled rejection and crashes the main process.
+        let fontTimeoutId;
         try {
-          await Promise.race([
-            page.evaluate(({ weight, size, family, sampleText }) => {
-              return document.fonts.load(`${weight} ${size}px "${family}"`, sampleText)
-                .then(() => document.fonts.ready);
-            }, { weight: targetWeight, size: fontSize, family: targetFont, sampleText: text.substring(0, 200) }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Font load timeout')), 6000))
-          ]);
+          const fontPromise = page.evaluate(({ weight, size, family, sampleText }) => {
+            return document.fonts.load(`${weight} ${size}px "${family}"`, sampleText)
+              .then(() => document.fonts.ready);
+          }, { weight: targetWeight, size: fontSize, family: targetFont, sampleText: text.substring(0, 200) });
+          const timeoutPromise = new Promise((_, reject) => {
+            fontTimeoutId = setTimeout(() => reject(new Error('Font load timeout')), 6000);
+          });
+          await Promise.race([fontPromise, timeoutPromise]);
         } catch (fontError) {
           console.warn('[RENDER] Font load error (will use system fallback):', fontError.message);
+        } finally {
+          if (fontTimeoutId) clearTimeout(fontTimeoutId);
         }
 
         // Verify the specific font is now loaded
@@ -461,14 +468,16 @@ class RenderingService {
             waitUntil: 'domcontentloaded',
             timeout: 10000
           });
+          let reloadTimeoutId;
           try {
-            await Promise.race([
-              page.evaluate('document.fonts.ready'),
-              new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Font loading timeout')), 2000)
-              )
-            ]);
-          } catch { /* continue with fallback */ }
+            const readyPromise = page.evaluate('document.fonts.ready');
+            const timeoutPromise = new Promise((_, reject) => {
+              reloadTimeoutId = setTimeout(() => reject(new Error('Font loading timeout')), 2000);
+            });
+            await Promise.race([readyPromise, timeoutPromise]);
+          } catch { /* continue with fallback */ } finally {
+            if (reloadTimeoutId) clearTimeout(reloadTimeoutId);
+          }
         }
 
         console.log(`[RENDER] Text rendered at ${fontSize}px`);

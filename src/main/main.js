@@ -2,6 +2,16 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Defense in depth: log unhandled rejections instead of crashing the kiosk process.
+// Node 18 (Electron 28) terminates the process on unhandled rejection by default —
+// a single stale setTimeout in a Promise.race is enough to kill a long-running kiosk.
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[MAIN] Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('[MAIN] Uncaught exception:', error);
+});
+
 // Import services (they run in main process)
 const ApiClient = require('../services/apiClient');
 const RenderingService = require('../services/renderingService');

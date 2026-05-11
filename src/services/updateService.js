@@ -83,21 +83,28 @@ class UpdateService {
       console.log('[UPDATE] Initiating update check...');
       console.log('[UPDATE] Current version:', app.getVersion());
 
-      // Timeout after 15 seconds to avoid hanging on startup
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Update check timed out after 15s')), 15000)
-      );
+      // Timeout after 15 seconds to avoid hanging on startup.
+      // CRITICAL: clear the timer in finally so the setTimeout doesn't reject a stale promise
+      // long after the race already settled (Node 18 unhandled rejection → process crash).
+      let timeoutId;
+      try {
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error('Update check timed out after 15s')), 15000);
+        });
 
-      await Promise.race([
-        autoUpdater.checkForUpdates(),
-        timeoutPromise
-      ]);
+        await Promise.race([
+          autoUpdater.checkForUpdates(),
+          timeoutPromise
+        ]);
 
-      return {
-        available: this.updateAvailable,
-        info: this.updateInfo,
-        currentVersion: app.getVersion()
-      };
+        return {
+          available: this.updateAvailable,
+          info: this.updateInfo,
+          currentVersion: app.getVersion()
+        };
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
     } catch (error) {
       console.error('[UPDATE] Check failed:', error.message);
       return {
