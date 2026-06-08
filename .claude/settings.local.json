@@ -82,7 +82,11 @@
       "Bash(cmd /c \"dir D:\\\\\")",
       "Bash(cmd /c dir D:)",
       "Read(//mnt/**)",
-      "Bash(cp -r C:/Users/JB/poemboothkiosk/dist/poembooth-kiosk-1.1.0-win.exe D:/)"
+      "Bash(cp -r C:/Users/JB/poemboothkiosk/dist/poembooth-kiosk-1.1.0-win.exe D:/)",
+      "Bash(powershell *)",
+      "Bash(gh repo *)",
+      "Bash(gh search *)",
+      "Bash(gh api *)"
     ],
     "deny": [],
     "ask": []
