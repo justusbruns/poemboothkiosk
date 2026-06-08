@@ -677,6 +677,21 @@ ipcMain.handle('wifi:connect', async (event, wifiConfig) => {
   }
 });
 
+// Install a WiFi profile (from booking config) without connecting
+ipcMain.handle('wifi:install-profile', async (event, wifiConfig) => {
+  try {
+    if (!wifiService) {
+      wifiService = new WiFiService();
+    }
+
+    const installed = await wifiService.installProfile(wifiConfig);
+    return { success: installed };
+  } catch (error) {
+    console.error('[MAIN] WiFi profile install error:', error);
+    return { success: false, error: error.message };
+  }
+});
+
 // Get current WiFi network
 ipcMain.handle('wifi:get-current', async () => {
   try {

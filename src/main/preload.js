@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // WiFi Service
   wifiConnect: (wifiConfig) => ipcRenderer.invoke('wifi:connect', wifiConfig),
+  wifiInstallProfile: (wifiConfig) => ipcRenderer.invoke('wifi:install-profile', wifiConfig),
   wifiGetCurrent: () => ipcRenderer.invoke('wifi:get-current'),
 
   // Printer Service

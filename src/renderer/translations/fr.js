@@ -10,8 +10,8 @@ export const fr = {
     startingKiosk: 'Démarrage du kiosque...'
   },
   wifi: {
-    setupRequired: 'Configuration WiFi requise',
-    holdQRCode: 'Tenez le code QR WiFi devant la caméra'
+    setupRequired: 'Connectez-moi à Internet',
+    holdQRCode: 'Tenez votre code QR WiFi devant la caméra'
   },
   booth: {
     pressForPoetry: 'Appuyez pour Poésie',

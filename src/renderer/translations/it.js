@@ -10,8 +10,8 @@ export const it = {
     startingKiosk: 'Avvio kiosk...'
   },
   wifi: {
-    setupRequired: 'Configurazione WiFi richiesta',
-    holdQRCode: 'Tenere il codice QR WiFi davanti alla fotocamera'
+    setupRequired: 'Collegami a Internet',
+    holdQRCode: 'Tieni il tuo codice QR WiFi davanti alla fotocamera'
   },
   booth: {
     pressForPoetry: 'Premi per Poesia',

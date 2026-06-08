@@ -99,15 +99,36 @@ class ApiClient {
     }
   }
 
-  // Check network connectivity
+  // Check network connectivity by attempting a TCP connection to the backend.
+  // Returns true only if the backend host is actually reachable (DNS resolves
+  // AND the TCP handshake on :443 completes). No internet / no WiFi → false,
+  // which routes the app to the WiFi QR setup screen instead of the error screen.
   async checkConnectivity() {
-    try {
-      // In dev/testing, assume we're online if we have certificates
-      return true; // Backend will return proper errors if offline
-    } catch (error) {
-      console.log('[API] Connectivity check failed:', error.message);
-      return true;
-    }
+    const net = require('net');
+    const url = new URL(this.baseUrl);
+    const host = url.hostname;
+    const port = parseInt(url.port, 10) || 443;
+    const TIMEOUT_MS = 5000;
+
+    return new Promise((resolve) => {
+      const socket = new net.Socket();
+      let settled = false;
+
+      const finish = (isOnline, reason) => {
+        if (settled) return;
+        settled = true;
+        socket.destroy();
+        console.log(`[API] Connectivity check: ${isOnline ? 'ONLINE' : 'OFFLINE'} (${reason})`);
+        resolve(isOnline);
+      };
+
+      socket.setTimeout(TIMEOUT_MS);
+      socket.once('connect', () => finish(true, `reachable ${host}:${port}`));
+      socket.once('timeout', () => finish(false, 'timeout'));
+      socket.once('error', (err) => finish(false, err.code || err.message));
+
+      socket.connect(port, host);
+    });
   }
 
   // Register device with backend

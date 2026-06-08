@@ -10,8 +10,8 @@ export const nl = {
     startingKiosk: 'Kiosk starten...'
   },
   wifi: {
-    setupRequired: 'WiFi-instelling vereist',
-    holdQRCode: 'Houd de WiFi QR-code voor de camera'
+    setupRequired: 'Verbind mij met internet',
+    holdQRCode: 'Houd je wifi-QR-code voor de camera'
   },
   booth: {
     pressForPoetry: 'Druk voor Poëzie',

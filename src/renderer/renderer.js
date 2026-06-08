@@ -27,6 +27,7 @@ const state = {
   loadingLottieAnimation: null,
   printerStatus: { available: false, status: 'unknown' },
   cameraRotation: 0, // Camera rotation from backend config (0, 90, 180, 270)
+  installedWifiSsid: null, // SSID of the booking WiFi profile already installed (dedup)
   loadingTextInterval: null,
   loadingTextIndex: 0,
   typingTimeoutId: null,      // Current pending typing animation timeout
@@ -596,6 +597,22 @@ async function handleUpdateInstall() {
 // App Initialization
 // =============================================================================
 
+// Detect whether an error is caused by lack of network/internet (vs a real
+// application error). Used to route to the WiFi setup screen instead of the
+// red error screen. Note: errors crossing the IPC boundary lose their .code,
+// so we also match on the message text.
+function isNetworkError(error) {
+  if (!error) return false;
+  const codes = ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE'];
+  if (error.code && codes.includes(error.code)) return true;
+  const msg = (error.message || '').toLowerCase();
+  return codes.some(c => msg.includes(c.toLowerCase())) ||
+    msg.includes('getaddrinfo') ||
+    msg.includes('socket hang up') ||
+    msg.includes('network') ||
+    msg.includes('request timeout');
+}
+
 async function initializeApp() {
   try {
     updateStatus('loading', 'Checking certificates...');
@@ -648,6 +665,9 @@ async function initializeApp() {
 
     // Get kiosk configuration
     state.kioskConfig = await window.electronAPI.apiGetConfig();
+
+    // Pre-install the active booking's venue WiFi as a saved profile (no switch)
+    await applyBookingWifi(state.kioskConfig);
 
     // Check for updates before proceeding
     updateStatus('loading', 'Checking for updates...');
@@ -737,6 +757,23 @@ async function initializeApp() {
 
   } catch (error) {
     console.error('[RENDERER] Initialization error:', error);
+
+    // No internet / no WiFi → guide the user to connect instead of showing
+    // the red error screen. Covers both first boot offline and the case where
+    // DNS resolves but the backend is unreachable.
+    if (isNetworkError(error)) {
+      console.log('[RENDERER] Network error during init → showing WiFi setup screen');
+      if (state.screen !== 'wifi') {
+        showScreen('wifi');
+        await initializeWiFiSetup();
+      } else {
+        // Already on the WiFi screen (e.g. retry after connecting) — keep scanning
+        elements.wifiStatus.textContent = 'Still no internet — hold your WiFi QR code in front of the camera';
+        scanForWiFiQR();
+      }
+      return;
+    }
+
     showError('Initialization failed', error.message, error);
   }
 }
@@ -745,9 +782,54 @@ async function initializeApp() {
 // WiFi Setup
 // =============================================================================
 
+// Install the active booking's venue WiFi (from backend config) as a saved
+// Windows profile so the device can auto-connect to it later when in range.
+// This does NOT switch the active connection mid-session — it only pre-loads
+// the network. No-op when the booking has no WiFi configured or it was already
+// installed this session.
+async function applyBookingWifi(config) {
+  try {
+    const creds = config && config.wifi_credentials;
+    if (!creds || !creds.ssid) return;
+
+    // Already installed this exact network — skip
+    if (state.installedWifiSsid === creds.ssid) return;
+
+    console.log('[CONFIG] Installing booking WiFi profile (SSID: [REDACTED])');
+    const result = await window.electronAPI.wifiInstallProfile({
+      ssid: creds.ssid,
+      password: creds.password || ''
+    });
+
+    if (result && result.success) {
+      state.installedWifiSsid = creds.ssid;
+      console.log('[CONFIG] Booking WiFi profile installed successfully');
+    } else {
+      console.warn('[CONFIG] Booking WiFi profile install did not succeed:', result && result.error);
+    }
+  } catch (error) {
+    // Best-effort only — never block the kiosk on this
+    console.error('[CONFIG] Error installing booking WiFi profile:', error);
+  }
+}
+
 async function initializeWiFiSetup() {
   try {
-    elements.wifiStatus.textContent = 'Waiting for QR code...';
+    elements.wifiStatus.textContent = 'Waiting for your WiFi QR code...';
+
+    // Make re-entry safe: stop any previous scan loop and camera stream first.
+    // Without this, the --force-wifi retry loop (and production reconnect
+    // retries) would open a NEW camera stream on every pass while leaking the
+    // old ones, progressively starving the camera until QR detection silently
+    // stops working — which looks like "scanning got worse over time".
+    if (state.wifiScanInterval) {
+      clearTimeout(state.wifiScanInterval);
+      state.wifiScanInterval = null;
+    }
+    if (elements.wifiVideo.srcObject) {
+      elements.wifiVideo.srcObject.getTracks().forEach(track => track.stop());
+      elements.wifiVideo.srcObject = null;
+    }
 
     // Start camera for QR scanning
     const stream = await navigator.mediaDevices.getUserMedia({
@@ -757,10 +839,14 @@ async function initializeWiFiSetup() {
 
     elements.wifiVideo.srcObject = stream;
 
-    // Wait for video to be ready
+    // Wait for video metadata, then make sure it is actually playing
     await new Promise((resolve) => {
+      if (elements.wifiVideo.readyState >= 1) return resolve();
       elements.wifiVideo.onloadedmetadata = () => resolve();
     });
+    try { await elements.wifiVideo.play(); } catch (e) { /* autoplay normally covers this */ }
+
+    console.log('[WIFI] QR scanner started');
 
     // Start QR scanning loop
     scanForWiFiQR();
@@ -772,28 +858,42 @@ async function initializeWiFiSetup() {
 }
 
 function scanForWiFiQR() {
-  if (state.screen !== 'wifi') return;
+  // Gate on the live camera stream, NOT on state.screen. When transitioning
+  // from the loading screen, showScreen() sets state.screen='wifi' only after
+  // a 1s fade-out, but the camera can start scanning before that — gating on
+  // state.screen would make the loop bail out and never restart (a race that
+  // caused intermittent "scanner not responding"). The stream is set in
+  // initializeWiFiSetup and cleared when we leave the screen, so it is the
+  // reliable signal that scanning should be active.
+  if (!elements.wifiVideo || !elements.wifiVideo.srcObject) return;
 
   try {
-    const canvas = document.createElement('canvas');
-    canvas.width = elements.wifiVideo.videoWidth;
-    canvas.height = elements.wifiVideo.videoHeight;
+    const video = elements.wifiVideo;
 
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(elements.wifiVideo, 0, 0, canvas.width, canvas.height);
+    // Only attempt detection once the camera is actually producing frames.
+    // Drawing a 0x0 frame makes jsQR find nothing with no error, which looks
+    // like the scanner is dead.
+    if (video.videoWidth > 0 && video.videoHeight > 0) {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // Try to detect QR code using jsQR (loaded via CDN in HTML)
-    if (typeof jsQR !== 'undefined') {
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert'
-      });
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      if (code) {
-        console.log('[WIFI] QR code detected:', code.data);
-        handleWiFiQRDetected(code.data);
-        return;
+      // Try to detect QR code using jsQR (loaded via vendor bundle in HTML)
+      if (typeof jsQR !== 'undefined') {
+        const code = jsQR(imageData.data, imageData.width, imageData.height, {
+          inversionAttempts: 'dontInvert'
+        });
+
+        if (code && code.data) {
+          console.log('[WIFI] QR code detected:', code.data);
+          handleWiFiQRDetected(code.data);
+          return;
+        }
       }
     }
   } catch (error) {
@@ -829,6 +929,13 @@ async function handleWiFiQRDetected(qrData) {
 
     elements.wifiStatus.textContent = 'Connected! Registering device...';
 
+    // Release the QR-scanning camera before continuing so it doesn't stay
+    // open behind the booth camera.
+    if (elements.wifiVideo.srcObject) {
+      elements.wifiVideo.srcObject.getTracks().forEach(track => track.stop());
+      elements.wifiVideo.srcObject = null;
+    }
+
     // Restart initialization now that we have connectivity
     await initializeApp();
 
@@ -838,7 +945,7 @@ async function handleWiFiQRDetected(qrData) {
 
     // Restart scanning after 3 seconds
     setTimeout(() => {
-      elements.wifiStatus.textContent = 'Waiting for QR code...';
+      elements.wifiStatus.textContent = 'Waiting for your WiFi QR code...';
       scanForWiFiQR();
     }, 3000);
   }
@@ -846,21 +953,68 @@ async function handleWiFiQRDetected(qrData) {
 
 function parseWiFiQR(qrData) {
   try {
-    // WiFi QR format: WIFI:T:WPA;S:SSID;P:password;;
-    const wifiRegex = /WIFI:T:([^;]+);S:([^;]+);P:([^;]+);/;
-    const match = qrData.match(wifiRegex);
+    if (!qrData) return null;
+    const data = qrData.trim();
 
-    if (match) {
-      return {
-        security: match[1],
-        ssid: match[2],
-        password: match[3]
-      };
+    // Standard WiFi QR format:  WIFI:S:<ssid>;T:<WPA|WEP|nopass|SAE>;P:<pw>;H:<bool>;;
+    //
+    // IMPORTANT: field order is NOT fixed. Android phones typically emit
+    // S;T;P (SSID first) while iOS emits T;S;P. The previous regex assumed a
+    // fixed T;S;P order and silently rejected Android codes. We also honour the
+    // spec's backslash escaping (\\  \;  \,  \:  \") so passwords/SSIDs that
+    // contain those characters are read correctly.
+    if (/^WIFI:/i.test(data)) {
+      const body = data.substring(5); // strip "WIFI:"
+      const fields = {};
+      let key = null;
+      let buf = '';
+      let parsingKey = true;
+
+      for (let i = 0; i < body.length; i++) {
+        const ch = body[i];
+
+        // Backslash escape — take the next character literally
+        if (ch === '\\' && i + 1 < body.length) {
+          buf += body[i + 1];
+          i++;
+          continue;
+        }
+
+        // First unescaped ':' separates key from value
+        if (parsingKey && ch === ':') {
+          key = buf.toUpperCase();
+          buf = '';
+          parsingKey = false;
+          continue;
+        }
+
+        // Unescaped ';' ends the current field
+        if (ch === ';') {
+          if (key !== null) fields[key] = buf;
+          key = null;
+          buf = '';
+          parsingKey = true;
+          continue;
+        }
+
+        buf += ch;
+      }
+      // Flush a trailing field if the string didn't end with ';'
+      if (key !== null && !parsingKey) fields[key] = buf;
+
+      if (fields.S) {
+        return {
+          security: (fields.T || 'WPA2').toUpperCase(),
+          ssid: fields.S,
+          password: fields.P || '',
+          hidden: /^true$/i.test(fields.H || '')
+        };
+      }
     }
 
     // Alternative: JSON format
     try {
-      const json = JSON.parse(qrData);
+      const json = JSON.parse(data);
       if (json.ssid) {
         return {
           security: json.security || 'WPA2',
@@ -2544,6 +2698,9 @@ async function checkForConfigUpdates() {
       // Update state
       const oldConfig = state.kioskConfig;
       state.kioskConfig = newConfig;
+
+      // Pre-install the booking's venue WiFi profile if it appeared/changed
+      await applyBookingWifi(newConfig);
 
       // Update camera rotation if changed
       const newRotation = newConfig.camera_rotation || 0;

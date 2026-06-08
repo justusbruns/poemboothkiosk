@@ -2,6 +2,12 @@
 const wifi = require('node-wifi');
 const { EventEmitter } = require('events');
 const jsQR = require('jsqr'); // QR code decoder
+const { exec } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const util = require('util');
+const execAsync = util.promisify(exec);
 
 class WiFiService extends EventEmitter {
   constructor() {
@@ -99,24 +105,43 @@ class WiFiService extends EventEmitter {
     this.scanInterval = setTimeout(() => this.scanForQRCode(), 100);
   }
 
-  // Parse WiFi QR code
+  // Parse WiFi QR code. Field order is NOT fixed (Android emits S;T;P, iOS
+  // emits T;S;P), and values may contain backslash-escaped \\ \; \, \: \" —
+  // so we parse order-independently and unescape rather than using a fixed regex.
   parseWiFiQR(qrData) {
     try {
-      // WiFi QR format: WIFI:T:WPA;S:SSID;P:password;H:false;;
-      const wifiRegex = /WIFI:T:([^;]+);S:([^;]+);P:([^;]+);/;
-      const match = qrData.match(wifiRegex);
+      if (!qrData) return null;
+      const data = qrData.trim();
 
-      if (match) {
-        return {
-          security: match[1], // WPA, WPA2, WEP, nopass
-          ssid: match[2],
-          password: match[3]
-        };
+      if (/^WIFI:/i.test(data)) {
+        const body = data.substring(5); // strip "WIFI:"
+        const fields = {};
+        let key = null;
+        let buf = '';
+        let parsingKey = true;
+
+        for (let i = 0; i < body.length; i++) {
+          const ch = body[i];
+          if (ch === '\\' && i + 1 < body.length) { buf += body[i + 1]; i++; continue; }
+          if (parsingKey && ch === ':') { key = buf.toUpperCase(); buf = ''; parsingKey = false; continue; }
+          if (ch === ';') { if (key !== null) fields[key] = buf; key = null; buf = ''; parsingKey = true; continue; }
+          buf += ch;
+        }
+        if (key !== null && !parsingKey) fields[key] = buf;
+
+        if (fields.S) {
+          return {
+            security: (fields.T || 'WPA2').toUpperCase(),
+            ssid: fields.S,
+            password: fields.P || '',
+            hidden: /^true$/i.test(fields.H || '')
+          };
+        }
       }
 
       // Alternative: JSON format
       try {
-        const json = JSON.parse(qrData);
+        const json = JSON.parse(data);
         if (json.ssid) {
           return {
             security: json.security || 'WPA2',
@@ -176,17 +201,132 @@ class WiFiService extends EventEmitter {
     }
   }
 
-  // Connect on Windows
+  // Connect on Windows via a netsh WLAN profile.
+  //
+  // We deliberately avoid node-wifi here because its Windows implementation
+  // first runs `netsh wlan show networks`, which requires Windows Location
+  // services to be enabled (otherwise it fails with "Access denied" / error 5).
+  // Adding a profile + connecting does NOT need Location services, so this
+  // works on a locked-down kiosk regardless of that privacy setting.
   async connectWindows(wifiConfig) {
+    const ssid = wifiConfig.ssid;
+    const password = wifiConfig.password || '';
+    const security = (wifiConfig.security || 'WPA2').toUpperCase();
+    const isOpen = security === 'NOPASS' || security === 'NONE' || security === '' || password === '';
+
+    const xml = isOpen
+      ? this._buildOpenProfileXml(ssid)
+      : this._buildWpa2ProfileXml(ssid, password);
+
+    const tmpFile = path.join(os.tmpdir(), `wlan-${Date.now()}.xml`);
+
     try {
-      await wifi.connect({
-        ssid: wifiConfig.ssid,
-        password: wifiConfig.password
-      });
+      fs.writeFileSync(tmpFile, xml, { encoding: 'utf8' });
+
+      // Add (or overwrite) the network profile for all users
+      await execAsync(`netsh wlan add profile filename="${tmpFile}" user=all`);
+
+      // Connect to the network using the profile we just added
+      await execAsync(`netsh wlan connect name="${ssid}" ssid="${ssid}"`);
+
+      console.log('[WIFI] netsh connect issued for SSID: [REDACTED]');
     } catch (error) {
-      console.error('[WIFI] Windows connection error:', error);
+      console.error('[WIFI] Windows connection error:', error.message);
       throw error;
+    } finally {
+      // SECURITY: the temp profile file contains the WiFi password — delete it
+      try { fs.unlinkSync(tmpFile); } catch (e) { /* ignore */ }
     }
+  }
+
+  // Install a WiFi network as a saved Windows profile WITHOUT connecting.
+  // Used to pre-load the active booking's venue WiFi (from the backend kiosk
+  // config) so Windows can auto-connect to it later when in range. This does
+  // NOT switch the currently active connection.
+  async installProfile(wifiConfig) {
+    if (process.platform !== 'win32') {
+      console.log('[WIFI] installProfile is only implemented on Windows; skipping');
+      return false;
+    }
+    if (!wifiConfig || !wifiConfig.ssid) {
+      return false;
+    }
+
+    const ssid = wifiConfig.ssid;
+    const password = wifiConfig.password || '';
+    const isOpen = !password;
+    const xml = isOpen
+      ? this._buildOpenProfileXml(ssid)
+      : this._buildWpa2ProfileXml(ssid, password);
+
+    const tmpFile = path.join(os.tmpdir(), `wlan-profile-${Date.now()}.xml`);
+
+    try {
+      fs.writeFileSync(tmpFile, xml, { encoding: 'utf8' });
+      await execAsync(`netsh wlan add profile filename="${tmpFile}" user=all`);
+      console.log('[WIFI] Booking WiFi profile installed (SSID: [REDACTED])');
+      return true;
+    } catch (error) {
+      console.error('[WIFI] Failed to install WiFi profile:', error.message);
+      return false;
+    } finally {
+      // SECURITY: the temp profile file contains the WiFi password — delete it
+      try { fs.unlinkSync(tmpFile); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // Escape a value for safe inclusion in the WLAN profile XML
+  _escapeXml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&apos;');
+  }
+
+  // WPA/WPA2-PSK (AES) profile — covers virtually all modern home/office WiFi
+  _buildWpa2ProfileXml(ssid, password) {
+    const s = this._escapeXml(ssid);
+    const p = this._escapeXml(password);
+    return `<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+  <name>${s}</name>
+  <SSIDConfig><SSID><name>${s}</name></SSID></SSIDConfig>
+  <connectionType>ESS</connectionType>
+  <connectionMode>auto</connectionMode>
+  <MSM><security>
+    <authEncryption>
+      <authentication>WPA2PSK</authentication>
+      <encryption>AES</encryption>
+      <useOneX>false</useOneX>
+    </authEncryption>
+    <sharedKey>
+      <keyType>passPhrase</keyType>
+      <protected>false</protected>
+      <keyMaterial>${p}</keyMaterial>
+    </sharedKey>
+  </security></MSM>
+</WLANProfile>`;
+  }
+
+  // Open network (no password)
+  _buildOpenProfileXml(ssid) {
+    const s = this._escapeXml(ssid);
+    return `<?xml version="1.0"?>
+<WLANProfile xmlns="http://www.microsoft.com/networking/WLAN/profile/v1">
+  <name>${s}</name>
+  <SSIDConfig><SSID><name>${s}</name></SSID></SSIDConfig>
+  <connectionType>ESS</connectionType>
+  <connectionMode>auto</connectionMode>
+  <MSM><security>
+    <authEncryption>
+      <authentication>open</authentication>
+      <encryption>none</encryption>
+      <useOneX>false</useOneX>
+    </authEncryption>
+  </security></MSM>
+</WLANProfile>`;
   }
 
   // Connect on Linux
