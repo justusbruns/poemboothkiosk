@@ -55,7 +55,7 @@ export const de = {
   },
   result: {
     scanToSave: 'Scannen zum Speichern',
-    holdToPrint: 'Knopf gedrückt halten zum Drucken'
+    scanToPrintAndSave: 'Scannen zum Speichern<br/>& Drucken'
   },
   error: {
     somethingWentWrong: 'Etwas ist schiefgelaufen',

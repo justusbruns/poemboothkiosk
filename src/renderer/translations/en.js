@@ -55,7 +55,7 @@ export const en = {
   },
   result: {
     scanToSave: 'Scan to save',
-    holdToPrint: 'Hold button to print'
+    scanToPrintAndSave: 'Scan to Save<br/>& Print'
   },
   error: {
     somethingWentWrong: 'Something Went Wrong',

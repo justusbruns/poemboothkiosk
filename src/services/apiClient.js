@@ -358,6 +358,75 @@ class ApiClient {
     }
   }
 
+  // Report printer connectivity/status so the portal can show/hide its print button
+  // Backend: POST /api/kiosk/printer-status { connected, status }
+  async reportPrinterStatus(connected, status) {
+    try {
+      return await this.request('POST', '/api/kiosk/printer-status', {
+        connected: !!connected,
+        status: status || 'unknown'
+      });
+    } catch (error) {
+      console.error('[API] reportPrinterStatus error:', error.message);
+      return { success: false };
+    }
+  }
+
+  // Poll for portal-requested print jobs for this device
+  // Backend: GET /api/kiosk/print-jobs -> { jobs: [{ id, session_id, print_format, print_orientation, rendered_image_url }] }
+  async getPrintJobs() {
+    try {
+      const res = await this.request('GET', '/api/kiosk/print-jobs');
+      return Array.isArray(res?.jobs) ? res.jobs : [];
+    } catch (error) {
+      console.error('[API] getPrintJobs error:', error.message);
+      return [];
+    }
+  }
+
+  // Update a print job's status (printing | completed | failed)
+  // Backend: PATCH /api/kiosk/print-jobs { job_id, status }
+  async updatePrintJob(jobId, status) {
+    try {
+      return await this.request('PATCH', '/api/kiosk/print-jobs', { job_id: jobId, status });
+    } catch (error) {
+      console.error('[API] updatePrintJob error:', error.message);
+      return { success: false };
+    }
+  }
+
+  // Download an image from a public URL (e.g. Supabase storage) into a Buffer.
+  // NOTE: this is NOT our backend — no auth header, no certificate pinning.
+  async downloadImage(imageUrl, _redirects = 0) {
+    return new Promise((resolve, reject) => {
+      try {
+        const url = new URL(imageUrl);
+        const mod = url.protocol === 'http:' ? require('http') : require('https');
+        const req = mod.get(url, (res) => {
+          // Follow up to 3 redirects (storage URLs sometimes redirect)
+          if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.resume();
+            if (_redirects >= 3) { reject(new Error('Too many redirects')); return; }
+            this.downloadImage(res.headers.location, _redirects + 1).then(resolve, reject);
+            return;
+          }
+          if (res.statusCode !== 200) {
+            res.resume();
+            reject(new Error(`Image download HTTP ${res.statusCode}`));
+            return;
+          }
+          const chunks = [];
+          res.on('data', (c) => chunks.push(c));
+          res.on('end', () => resolve(Buffer.concat(chunks)));
+        });
+        req.on('error', reject);
+        req.setTimeout(20000, () => req.destroy(new Error('Image download timeout')));
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
+
   // Generic request method (using built-in https module)
   async request(method, endpoint, body = null) {
     return new Promise((resolve, reject) => {

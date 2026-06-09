@@ -75,6 +75,7 @@ const MockHardwareService = require('../services/mockHardwareService');
 const PrinterService = require('../services/printerService');
 const MockPrinterService = require('../services/mockPrinterService');
 const UpdateService = require('../services/updateService');
+const PrintJobService = require('../services/printJobService');
 
 // Constants
 const IS_DEV = process.argv.includes('--dev');
@@ -100,6 +101,7 @@ let wifiService = null;
 let hardwareService = null;
 let printerService = null;
 let updateService = null;
+let printJobService = null;
 
 // Get platform-specific certificate path
 function getCertificatePath() {
@@ -353,6 +355,11 @@ async function initializePrinter() {
     printerService.onStatusChange((status) => {
       console.log('[MAIN] Printer status changed:', status);
       mainWindow.webContents.send('printer:statusChange', status);
+      // Also push the new status to the backend so the portal print button
+      // reflects reality immediately (not just on the 60s heartbeat).
+      if (printJobService) {
+        printJobService.onPrinterStatusChange().catch(() => {});
+      }
     });
 
     console.log('[MAIN] Printer service initialized');
@@ -363,6 +370,9 @@ async function initializePrinter() {
 
 // Cleanup hardware and printer on quit
 app.on('will-quit', async () => {
+  if (printJobService) {
+    printJobService.stop();
+  }
   if (hardwareService) {
     await hardwareService.destroy();
   }
@@ -502,6 +512,16 @@ ipcMain.handle('api:initialize', async () => {
     console.log('[MAIN] Initializing API client...');
     apiClient = new ApiClient();
     await apiClient.initialize();
+
+    // Start portal-print bridge: report printer status + poll for print jobs.
+    // Safe to (re)create — stop any prior instance first.
+    if (printJobService) printJobService.stop();
+    printJobService = new PrintJobService({
+      apiClient,
+      getPrinterService: () => printerService
+    });
+    printJobService.start();
+
     return { success: true };
   } catch (error) {
     console.error('[MAIN] API initialization error:', error);

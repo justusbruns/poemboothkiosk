@@ -55,7 +55,7 @@ export const it = {
   },
   result: {
     scanToSave: 'Scansiona per salvare',
-    holdToPrint: 'Tieni premuto il pulsante per stampare'
+    scanToPrintAndSave: 'Scansiona per Salvare<br/>e Stampare'
   },
   error: {
     somethingWentWrong: 'Qualcosa è andato storto',

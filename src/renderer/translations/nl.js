@@ -55,7 +55,7 @@ export const nl = {
   },
   result: {
     scanToSave: 'Scannen om op te slaan',
-    holdToPrint: 'Knop lang indrukken om te printen'
+    scanToPrintAndSave: 'Scan om te Bewaren<br/>& Printen'
   },
   error: {
     somethingWentWrong: 'Er is iets misgegaan',

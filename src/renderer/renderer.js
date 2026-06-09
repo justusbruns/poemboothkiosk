@@ -67,10 +67,7 @@ const elements = {
   resultPhoto: document.getElementById('result-photo'),
   poemText: document.getElementById('poem-text'),
   resultQr: document.getElementById('result-qr'),
-  printContainer: document.getElementById('print-container'),
-  printIcon: document.getElementById('print-icon'),
-  printDoneIcon: document.getElementById('print-done-icon'),
-  printProgress: document.getElementById('print-progress'),
+  qrLabel: document.getElementById('qr-label'),
   timerCircle: document.getElementById('timer-circle'),
   glassWipe: document.getElementById('glass-wipe'),
   qrStatus: document.getElementById('qr-status'),
@@ -432,11 +429,8 @@ function updateUIText() {
     elements.styleHint.textContent = t('booth.turnKnob');
   }
 
-  // Result screen - circle labels
-  const scanToSaveLabel = document.querySelector('#qr-circle + .circle-label');
-  const holdToPrintLabel = document.querySelector('#print-circle + .circle-label');
-  if (scanToSaveLabel) scanToSaveLabel.textContent = t('result.scanToSave');
-  if (holdToPrintLabel) holdToPrintLabel.textContent = t('result.holdToPrint');
+  // Result screen - QR label (adaptive: print & save when a printer is connected)
+  updateResultActionLabel();
 
   // Error screen
   const errorTitle = document.querySelector('#error-screen h1');
@@ -1070,46 +1064,25 @@ function setupEventListeners() {
     if (state.screen === 'booth' && !state.isProcessing) {
       console.log('[HARDWARE] Calling handleCapture()...');
       handleCapture();
-    } else if (state.screen === 'result' && !state.isProcessing && !state.isPrinting && state.printerStatus.available) {
-      // Start print hold immediately on result screen (instant feedback)
-      console.log('[HARDWARE] Starting print hold on result screen');
-      startPrintHold();
+    } else if (state.screen === 'result' && !state.isProcessing) {
+      // Result screen: the physical button returns to booth for the next guest.
+      // Printing is done from the guest's phone via the QR code, not on the kiosk.
+      console.log('[HARDWARE] Button on result screen - returning to booth');
+      cancel30SecondTimer();
+      triggerGlassWipe();
     } else {
-      console.log('[HARDWARE] Ignoring button press - wrong screen, already processing, or printer not available');
+      console.log('[HARDWARE] Ignoring button press - wrong screen or already processing');
     }
   });
 
-  // Hardware button release - cancel print hold or return to booth
+  // Hardware button release - retry from error screen
+  // (Result-screen return-to-booth is handled on button PRESS now; printing moved to the phone.)
   window.electronAPI.onButtonRelease((data) => {
-    console.log('[HARDWARE] Button release event received:', data, 'printHoldStart:', !!state.printHoldStart, 'isPrinting:', state.isPrinting);
+    console.log('[HARDWARE] Button release event received:', data);
 
-    // Cancel print hold if in progress (released before 2 seconds)
-    if (state.printHoldStart && !state.isPrinting) {
-      console.log('[HARDWARE] Cancelling print hold on button release');
-      cancelPrintHold();
-      return; // Don't transition to booth - stay on result screen
-    }
-
-    // Add small delay to avoid race conditions with screen transitions
+    // Small delay to avoid race conditions with screen transitions
     setTimeout(() => {
-      // Don't transition if print hold is active or printing
-      if (state.printHoldStart || state.isPrinting) {
-        console.log('[HARDWARE] Ignoring button release - print in progress');
-        return;
-      }
-
-      if (state.screen === 'result' && !state.isProcessing) {
-        // If printer is available, stay on result screen (user uses countdown or holds to print)
-        // Only return to booth if printer is NOT available
-        if (!state.printerStatus.available) {
-          console.log('[HARDWARE] Printer not available - returning to booth screen');
-          showScreen('booth');
-          state.currentPhoto = null;
-          state.currentSession = null;
-        } else {
-          console.log('[HARDWARE] Printer available - staying on result screen (short press)');
-        }
-      } else if (state.screen === 'error') {
+      if (state.screen === 'error') {
         // Retry from error screen
         showScreen('booth');
       }
@@ -1190,11 +1163,12 @@ function setupEventListeners() {
         handleCapture();
       }
 
-      // 'P' key hold OR Enter hold - print (result screen)
-      if ((e.code === 'KeyP' || e.code === 'Enter') && state.screen === 'result' && !e.repeat) {
+      // Enter (physical button) on result screen - return to booth for the next guest
+      if (e.code === 'Enter' && state.screen === 'result' && !e.repeat) {
         e.preventDefault();
-        console.log('[HARDWARE] Enter/P detected on result screen, starting print hold');
-        startPrintHold();
+        console.log('[HARDWARE] Enter on result screen - returning to booth');
+        cancel30SecondTimer();
+        triggerGlassWipe();
       }
 
       // Arrow keys - change style (booth screen)
@@ -1215,13 +1189,6 @@ function setupEventListeners() {
       }
     });
 
-    document.addEventListener('keyup', (e) => {
-      // 'P' key OR Enter release - cancel print hold
-      if ((e.code === 'KeyP' || e.code === 'Enter') && state.screen === 'result') {
-        e.preventDefault();
-        cancelPrintHold();
-      }
-    });
   }
 }
 
@@ -1647,14 +1614,8 @@ async function processImageGeneration(response) {
       elements.poemText.classList.add('typing-complete');
     }
 
-    // Check printer status and show/hide print container
-    if (state.printerStatus.available && (state.printerStatus.status === 'ready' || state.printerStatus.status === 'printing')) {
-      console.log('[RENDERER] Printer available - showing print container');
-      elements.printContainer.style.display = 'flex';
-    } else {
-      console.log('[RENDERER] Printer not available - hiding print container');
-      elements.printContainer.style.display = 'none';
-    }
+    // Adapt the QR label to the printer state (print & save vs save)
+    updateResultActionLabel();
 
     // If image was already uploaded by backend, skip upload step
     if (response.storage_url || response.rendered_image_url) {
@@ -1890,14 +1851,8 @@ function showPoemWithTypingEffect(poemText) {
   elements.poemText.style.fontSize = fontSize;
   console.log(`[RENDERER] Applied font size: ${fontSize}`);
 
-  // Check printer status and show/hide print container
-  if (state.printerStatus.available && (state.printerStatus.status === 'ready' || state.printerStatus.status === 'printing')) {
-    console.log('[RENDERER] Printer available - showing print container');
-    elements.printContainer.style.display = 'flex';
-  } else {
-    console.log('[RENDERER] Printer not available - hiding print container');
-    elements.printContainer.style.display = 'none';
-  }
+  // Adapt the QR label to the printer state (print & save vs save)
+  updateResultActionLabel();
 
   // Add typing effect with human-like timing
   let charIndex = 0;
@@ -1940,6 +1895,19 @@ function showPoemWithTypingEffect(poemText) {
   }
 
   typeNextChar();
+}
+
+// Set the QR action label based on whether a printer is currently connected.
+// Printing now happens from the guest's phone (portal print button), so when a
+// printer is available the QR does both — otherwise it only offers save.
+function updateResultActionLabel() {
+  if (!elements.qrLabel) return;
+  const canPrint = state.printerStatus && state.printerStatus.available &&
+    (state.printerStatus.status === 'ready' || state.printerStatus.status === 'printing');
+  // innerHTML: the print&save label uses a <br/> to sit nicely on two lines
+  elements.qrLabel.innerHTML = canPrint
+    ? t('result.scanToPrintAndSave')
+    : t('result.scanToSave');
 }
 
 function showQRCode(publicViewUrl) {
@@ -1997,15 +1965,10 @@ function showQRCode(publicViewUrl) {
 
       // Show QR circle with pop animation after QR code is generated
       const qrCircle = document.getElementById('qr-circle');
-      const printCircle = document.getElementById('print-circle');
 
       setTimeout(() => {
         if (qrCircle) {
           qrCircle.classList.add('show');
-        }
-        // Show print circle at same time if printer available
-        if (printCircle && state.printerStatus.available) {
-          printCircle.classList.add('show');
         }
       }, 100);
     } catch (error) {
@@ -2015,14 +1978,8 @@ function showQRCode(publicViewUrl) {
     console.error('[QR] QR Code Styling library not loaded');
   }
 
-  // Show print circle if printer hardware is available and ready
-  if (state.printerStatus.available && state.printerStatus.status === 'ready') {
-    console.log('[RENDERER] Printer available and ready - showing container');
-    elements.printContainer.style.display = 'flex';
-  } else {
-    console.log('[RENDERER] Printer not available - hiding container (available:', state.printerStatus.available, 'status:', state.printerStatus.status + ')');
-    elements.printContainer.style.display = 'none';
-  }
+  // Adapt the QR label to the printer state (print & save vs save)
+  updateResultActionLabel();
 
   // Start 30-second countdown timer
   start30SecondTimer();
@@ -2113,26 +2070,6 @@ function triggerGlassWipe() {
       qrCircle.classList.remove('show');
     }
 
-    // Reset print icons for next session
-    if (elements.printIcon) {
-      elements.printIcon.style.display = 'flex';
-    }
-    if (elements.printDoneIcon) {
-      elements.printDoneIcon.style.display = 'none';
-      elements.printDoneIcon.classList.remove('show');
-    }
-    // Reset print progress ring to empty state
-    if (elements.printProgress) {
-      const circumference = 440; // Match CSS stroke-dasharray value (r=70px)
-      elements.printProgress.style.transition = 'none';
-      elements.printProgress.style.strokeDashoffset = circumference; // Equals dasharray = fully hidden
-    }
-    // Reset print circle animation (so it appears with QR code)
-    const printCircle = document.getElementById('print-circle');
-    if (printCircle) {
-      printCircle.classList.remove('show');
-    }
-
     // Reset result photo for next session (may have been hidden for image generation)
     if (elements.resultPhoto) {
       elements.resultPhoto.style.display = '';
@@ -2147,224 +2084,6 @@ function triggerGlassWipe() {
   }, 800);
 }
 
-// Start print hold progress (2-second hold - matches MockHardwareService.longPressThreshold)
-function startPrintHold() {
-  if (state.printHoldStart) return; // Already holding
-
-  console.log('[RENDERER] Starting print hold...');
-
-  // Keep 30-second timer running (don't cancel it)
-  // Timer will continue counting down even while printing
-
-  state.printHoldStart = Date.now();
-
-  const HOLD_DURATION = 2000; // 2 seconds (must match MockHardwareService.longPressThreshold)
-  const circumference = 440; // Match CSS stroke-dasharray value (r=70px)
-
-  // INSTANT FEEDBACK: Show green line immediately (start from full)
-  elements.printProgress.style.transition = 'none';
-  elements.printProgress.style.strokeDashoffset = circumference; // Equals dasharray = fully hidden
-
-  // Force reflow to apply instant change
-  void elements.printProgress.offsetWidth;
-
-  // Re-enable transition for smooth animation
-  elements.printProgress.style.transition = 'stroke-dashoffset 0.05s linear';
-
-  function updatePrintProgress() {
-    // Guard: if print hold was cancelled, stop the animation loop
-    if (!state.printHoldStart) {
-      return;
-    }
-
-    const elapsed = Date.now() - state.printHoldStart;
-    const progress = Math.min(1, elapsed / HOLD_DURATION);
-
-    // Update stroke-dashoffset (440 = empty, 0 = full)
-    const offset = circumference * (1 - progress);
-    elements.printProgress.style.strokeDashoffset = offset;
-
-    if (progress >= 1) {
-      // Hold complete - trigger print
-      completePrintHold();
-    } else {
-      state.printHoldInterval = requestAnimationFrame(updatePrintProgress);
-    }
-  }
-
-  // Start animation on next frame for instant visual feedback
-  requestAnimationFrame(updatePrintProgress);
-}
-
-// Cancel print hold progress
-function cancelPrintHold() {
-  if (!state.printHoldStart) return;
-
-  console.log('[RENDERER] Cancelling print hold');
-  state.printHoldStart = null;
-
-  if (state.printHoldInterval) {
-    cancelAnimationFrame(state.printHoldInterval);
-    state.printHoldInterval = null;
-  }
-
-  // SNAP-BACK: Quick transition back to empty
-  const circumference = 440; // Match CSS stroke-dasharray value (r=70px)
-  elements.printProgress.style.transition = 'stroke-dashoffset 0.2s ease-out';
-  elements.printProgress.style.strokeDashoffset = circumference; // Equals dasharray = fully hidden
-
-  // Reset transition after snap-back
-  setTimeout(() => {
-    elements.printProgress.style.transition = 'stroke-dashoffset 0.05s linear';
-  }, 200);
-}
-
-// Complete print hold - trigger print
-async function completePrintHold() {
-  console.log('[RENDERER] Print hold complete');
-
-  // Clean up progress tracking
-  state.printHoldStart = null;
-  if (state.printHoldInterval) {
-    cancelAnimationFrame(state.printHoldInterval);
-    state.printHoldInterval = null;
-  }
-
-  // Show checkmark icon
-  elements.printIcon.style.display = 'none';
-  elements.printDoneIcon.style.display = 'block';
-
-  // Trigger print
-  await handlePrint();
-}
-
-async function handlePrint() {
-  console.log('[RENDERER] ===== PRINT REQUEST STARTED =====');
-  console.log('[RENDERER] Session ID:', state.currentSession?.id);
-  console.log('[RENDERER] isPrinting:', state.isPrinting);
-
-  // Mutex guard - prevent duplicate print jobs
-  if (state.isPrinting) {
-    console.log('[RENDERER] Print already in progress, ignoring duplicate request');
-    return;
-  }
-
-  state.isPrinting = true;
-
-  try {
-    if (!state.currentSession) {
-      console.error('[RENDERER] ❌ No session to print');
-      updatePrinterStatus({ available: false, status: 'error', message: 'No session available' });
-      state.isPrinting = false;
-      return;
-    }
-
-    if (!state.currentPrintBuffer) {
-      console.error('[RENDERER] ❌ No print buffer available');
-      updatePrinterStatus({ available: false, status: 'error', message: 'No image to print' });
-      state.isPrinting = false;
-      return;
-    }
-
-    console.log('[RENDERER] Print buffer size:', state.currentPrintBuffer.length, 'bytes',
-                '(' + (state.currentPrintBuffer.length / 1024 / 1024).toFixed(2) + ' MB)');
-
-    // Check printer status
-    console.log('[RENDERER] Checking printer status...');
-    const printerStatus = await window.electronAPI.printerGetStatus();
-    console.log('[RENDERER] Printer status:', JSON.stringify(printerStatus));
-
-    if (!printerStatus.available) {
-      console.error('[RENDERER] ❌ Printer not available');
-      updatePrinterStatus(printerStatus);
-      state.isPrinting = false;
-      return;
-    }
-
-    // Update status to printing
-    console.log('[RENDERER] Updating UI to show printing status...');
-    updatePrinterStatus({ available: true, status: 'printing', message: 'Printing...' });
-
-    // Send print job to printer via IPC with print format options
-    console.log('[RENDERER] Calling window.electronAPI.printerPrint()...');
-    console.log('[RENDERER] Print options:', {
-      printFormat: state.currentPrintFormat,
-      printOrientation: state.currentPrintOrientation
-    });
-    const result = await window.electronAPI.printerPrint(state.currentPrintBuffer, {
-      printFormat: state.currentPrintFormat,
-      printOrientation: state.currentPrintOrientation
-    });
-
-    console.log('[RENDERER] Print IPC returned:', JSON.stringify(result));
-
-    if (result.success) {
-      console.log('[RENDERER] ✅ Print job completed successfully');
-
-      // Log print action to backend
-      console.log('[RENDERER] Logging print action to backend...');
-      try {
-        await window.electronAPI.apiLogPrint(state.currentSession.id);
-        console.log('[RENDERER] ✅ Print action logged');
-      } catch (logError) {
-        console.warn('[RENDERER] ⚠️ Failed to log print:', logError);
-      }
-
-      // Show print icon as done with pop animation
-      if (elements.printIcon) {
-        elements.printIcon.style.display = 'none';
-      }
-      if (elements.printDoneIcon) {
-        elements.printDoneIcon.style.display = 'flex';
-        // Trigger pop animation
-        setTimeout(() => {
-          elements.printDoneIcon.classList.add('show');
-        }, 50);
-      }
-
-      // Update status back to ready after delay
-      setTimeout(async () => {
-        console.log('[RENDERER] Refreshing printer status...');
-        const status = await window.electronAPI.printerGetStatus();
-        updatePrinterStatus(status);
-      }, 2000);
-
-      // Reset isPrinting flag after successful print
-      state.isPrinting = false;
-      console.log('[RENDERER] isPrinting flag reset after successful print');
-    } else {
-      console.error('[RENDERER] ❌ Print job FAILED');
-      console.error('[RENDERER] Error message:', result.error);
-      updatePrinterStatus({ available: false, status: 'error', message: result.error || 'Print failed' });
-
-      // Reset print icon
-      if (elements.printIcon) {
-        elements.printIcon.style.display = 'block';
-      }
-      if (elements.printDoneIcon) {
-        elements.printDoneIcon.style.display = 'none';
-      }
-
-      // Reset isPrinting flag on failure
-      state.isPrinting = false;
-    }
-  } catch (error) {
-    console.error('[RENDERER] ❌ Print exception:', error);
-    console.error('[RENDERER] Exception stack:', error.stack);
-    updatePrinterStatus({ available: false, status: 'error', message: error.message });
-
-    // Reset print icon
-    if (elements.printIcon) {
-      elements.printIcon.style.display = 'block';
-    }
-    if (elements.printDoneIcon) {
-      elements.printDoneIcon.style.display = 'none';
-    }
-
-    // Reset isPrinting flag on exception
-    state.isPrinting = false;
-  }
-}
 
 // Update printer status display
 function updatePrinterStatus(status) {
@@ -2408,16 +2127,9 @@ function updatePrinterStatus(status) {
   printerStatusEl.textContent = statusText;
   printerStatusEl.style.color = statusColor;
 
-  // Toggle print container visibility based on printer status
-  // Only show print container when on result screen
-  if (state.screen === 'result' && elements.printContainer) {
-    if (status.available && (status.status === 'ready' || status.status === 'printing')) {
-      console.log('[RENDERER] Showing print container (printer available)');
-      elements.printContainer.style.display = 'flex';
-    } else {
-      console.log('[RENDERER] Hiding print container (printer not available)');
-      elements.printContainer.style.display = 'none';
-    }
+  // Keep the QR action label in sync with the live printer status on the result screen
+  if (state.screen === 'result') {
+    updateResultActionLabel();
   }
 }
 
