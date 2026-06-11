@@ -15,7 +15,13 @@ export const fr = {
   },
   booth: {
     pressForPoetry: 'Appuyez pour Poésie',
-    turnKnob: 'Tournez le bouton pour changer de style'
+    turnKnob: 'Tournez le bouton pour changer de style',
+    turnAndPress: 'Tourne le bouton & Appuie',
+    pressForMasterpiece: 'Appuie pour ton Chef-d’œuvre',
+    tryingFree: 'Essayer est toujours gratuit',
+    cta1: 'Appuie sur<br/>le Bouton',
+    cta2: 'Essayer<br/>est Gratuit',
+    cta3: 'Obtiens ton<br/>Chef-d’œuvre !'
   },
   countdown: {
     // Les nombres sont universels, pas de traduction nécessaire
@@ -55,7 +61,18 @@ export const fr = {
   },
   result: {
     scanToSave: 'Scannez pour sauvegarder',
-    scanToPrintAndSave: 'Scannez pour Sauver<br/>et Imprimer'
+    scanToPrintAndSave: 'Scannez pour Sauver<br/>et Imprimer',
+    printForJust: 'Imprime pour seulement',
+    scanQrNow: 'Scanne le QR code maintenant'
+  },
+  terms: {
+    agree: 'En commençant, vous acceptez nos conditions et notre politique de confidentialité'
+  },
+  countdown: {
+    look: 'Regarde ici',
+    ready: 'Prêt ?',
+    pose: 'Pose',
+    smile: 'Souris'
   },
   error: {
     somethingWentWrong: 'Quelque chose s\'est mal passé',

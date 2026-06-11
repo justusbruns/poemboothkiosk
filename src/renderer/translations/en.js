@@ -15,7 +15,13 @@ export const en = {
   },
   booth: {
     pressForPoetry: 'Press for Poetry',
-    turnKnob: 'Turn knob to change style'
+    turnKnob: 'Turn knob to change style',
+    turnAndPress: 'Turn the knob & Press',
+    pressForMasterpiece: 'Press for your Masterpiece',
+    tryingFree: 'Trying is always free',
+    cta1: 'Press<br/>the Button',
+    cta2: 'Trying<br/>is Free',
+    cta3: 'Get your<br/>Masterpiece now!'
   },
   countdown: {
     // Numbers are universal, no translation needed
@@ -55,7 +61,18 @@ export const en = {
   },
   result: {
     scanToSave: 'Scan to save',
-    scanToPrintAndSave: 'Scan to Save<br/>& Print'
+    scanToPrintAndSave: 'Scan to Save<br/>& Print',
+    printForJust: 'Print for just',
+    scanQrNow: 'Scan the QR code now'
+  },
+  terms: {
+    agree: 'By starting you agree to our Terms & Privacy Policy'
+  },
+  countdown: {
+    look: 'Look here',
+    ready: 'Ready?',
+    pose: 'Pose',
+    smile: 'Smile'
   },
   error: {
     somethingWentWrong: 'Something Went Wrong',

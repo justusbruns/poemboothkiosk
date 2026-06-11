@@ -15,7 +15,13 @@ export const it = {
   },
   booth: {
     pressForPoetry: 'Premi per Poesia',
-    turnKnob: 'Ruota la manopola per cambiare stile'
+    turnKnob: 'Ruota la manopola per cambiare stile',
+    turnAndPress: 'Ruota la manopola e Premi',
+    pressForMasterpiece: 'Premi per il tuo Capolavoro',
+    tryingFree: 'Provare è sempre gratis',
+    cta1: 'Premi<br/>il Pulsante',
+    cta2: 'Provare<br/>è Gratis',
+    cta3: 'Prendi il tuo<br/>Capolavoro!'
   },
   countdown: {
     // I numeri sono universali, nessuna traduzione necessaria
@@ -55,7 +61,18 @@ export const it = {
   },
   result: {
     scanToSave: 'Scansiona per salvare',
-    scanToPrintAndSave: 'Scansiona per Salvare<br/>e Stampare'
+    scanToPrintAndSave: 'Scansiona per Salvare<br/>e Stampare',
+    printForJust: 'Stampa per solo',
+    scanQrNow: 'Scansiona il QR code ora'
+  },
+  terms: {
+    agree: 'Iniziando accetti i nostri termini e l’informativa sulla privacy'
+  },
+  countdown: {
+    look: 'Guarda qui',
+    ready: 'Pronto?',
+    pose: 'Posa',
+    smile: 'Sorridi'
   },
   error: {
     somethingWentWrong: 'Qualcosa è andato storto',

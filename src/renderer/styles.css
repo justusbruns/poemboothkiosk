@@ -291,17 +291,74 @@ h1, h2, h3, h4, h5, h6, p {
   100% { opacity: 0; } /* Fade out over ~0.3s */
 }
 
+/* Countdown animation overlay - transparent Lottie over the live camera (9:16, ends with a flash) */
+.countdown-lottie {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 25;
+  pointer-events: none;
+}
+
+.countdown-lottie svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
 /* Floating Action Button */
+/* Poem Booth branding (animated logo + URL) - global overlay, shown on booth + processing */
+.booth-brand {
+  position: fixed;
+  top: 3vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  pointer-events: none;
+}
+
+.booth-brand.show {
+  display: flex;
+}
+
+.booth-brand-logo {
+  width: 230px;
+  height: 230px;
+  filter: drop-shadow(0 2px 12px rgba(0, 0, 0, 0.5));
+}
+
+.booth-brand-logo svg {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.booth-brand-url {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.425rem; /* 25% smaller */
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  margin: -2.6rem 0 0 0; /* pulled further up, closer to the logo */
+}
+
 .floating-action {
   position: absolute;
-  bottom: 12rem; /* Moved up by 9rem */
+  bottom: 5rem; /* lowered so the whole style-picker (incl. terms) sinks down, leaving room to pose */
   left: 50%;
   transform: translateX(-50%);
   z-index: 5;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 0.4rem; /* tighter so the block stays compact and leaves room to pose */
 }
 
 /* Pulsating Circles */
@@ -349,17 +406,61 @@ h1, h2, h3, h4, h5, h6, p {
 
 .style-hint {
   font-family: 'Inter', sans-serif;
-  font-size: 1rem;
-  opacity: 0.8;
-  color: white;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.6);
   text-align: center;
-  margin-top: 0.5rem;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+  margin-top: 0.75rem;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Wrapper around the coverflow so the price badge can overlap the centre card */
+.coverflow-wrap {
+  position: relative;
+  margin-bottom: 1.6rem; /* room for the badge that overhangs below the cards */
+}
+
+/* Price badge - single-print cost, centred on the bottom edge of the selected style card */
+.price-badge {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 100px); /* badge centre = bottom edge of the 200px-tall centre card */
+  transform: translate(-50%, -50%);
+  width: 63px;            /* 25% smaller than before */
+  height: 63px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;             /* above the whole coverflow, so styles rotate behind it */
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  pointer-events: none;
+}
+
+.price-amount {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;     /* scaled down with the badge */
+  color: #ffffff;
+  text-align: center;
+  line-height: 1;
+}
+
+/* "Trying is always free" reassurance (paid mode), right under the hero */
+.try-free-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: center;
+  margin: 0;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 .action-button-text {
   font-family: 'Inter', sans-serif;
-  font-size: 2rem;
+  font-size: 1.7rem;
   font-weight: 700;
   text-align: center;
   color: white;
@@ -367,68 +468,74 @@ h1, h2, h3, h4, h5, h6, p {
   z-index: 1;
   position: relative;
   flex-shrink: 0;
+  line-height: 1.15;
+  margin-bottom: 1rem; /* more breathing room above the style carousel */
+  transition: opacity 0.4s ease; /* used by the capture fade-out */
 }
 
-/* Style carousel - container with centered main text */
-.style-carousel {
+/* Slide-in for the rotating CTA (same feel as the old style-switch animation) */
+@keyframes ctaSlideIn {
+  0%   { transform: translateX(70px); opacity: 0; }
+  60%  { transform: translateX(-10px); opacity: 1; }
+  80%  { transform: translateX(4px); }
+  100% { transform: translateX(0); opacity: 1; }
+}
+
+/* Style coverflow - cards fanned in 3D like flipping through records */
+.style-coverflow {
+  position: relative;
+  width: 100%;
+  height: 210px;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
   z-index: 1;
-  /* No gap - use absolute positioning for prev/next */
+  perspective: 1000px;        /* 3D depth so side cards tilt inward */
+  perspective-origin: 50% 50%;
 }
 
-/* Adjacent style options (prev/next) - ABSOLUTE positioning */
-.style-option {
-  font-family: 'Inter', sans-serif;
-  font-size: 1.4rem;
-  font-weight: 500;
-  color: white;
-  opacity: 0;
-  white-space: nowrap;
-  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
-  transition: opacity 0.3s ease-out;
-  pointer-events: none;
-  position: absolute;  /* Absolute so they don't shift center */
+.style-card {
+  position: absolute;
   top: 50%;
-  transform: translateY(-50%);
+  left: 50%;
+  width: 150px;
+  height: 200px;
+  margin-left: -75px;
+  margin-top: -100px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1f1f33;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  transform-origin: center center;
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
+  will-change: transform, opacity;
+  pointer-events: none;
 }
 
-.style-option.style-prev {
-  right: calc(50% + 140px);  /* Position to the left of center */
+.style-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
-.style-option.style-next {
-  left: calc(50% + 140px);   /* Position to the right of center */
+/* Poem styles get a "record sleeve" card with the poet/style name */
+.style-card-poem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.6rem;
+  background: linear-gradient(150deg, #4a4a72 0%, #23233b 100%);
 }
 
-/* Show adjacent options when carousel is actively turning */
-.style-carousel.turning .style-option {
-  opacity: 0.5;
-}
-
-/* Slide animations for the ENTIRE carousel strip - MIRRORED direction */
-@keyframes carouselSlideRight {
-  0% { transform: translateX(-100px); }
-  60% { transform: translateX(12px); }
-  80% { transform: translateX(-4px); }
-  100% { transform: translateX(0); }
-}
-
-@keyframes carouselSlideLeft {
-  0% { transform: translateX(100px); }
-  60% { transform: translateX(-12px); }
-  80% { transform: translateX(4px); }
-  100% { transform: translateX(0); }
-}
-
-.style-carousel.slide-right {
-  animation: carouselSlideRight 0.35s ease-out forwards;
-}
-
-.style-carousel.slide-left {
-  animation: carouselSlideLeft 0.35s ease-out forwards;
+.style-card-poem .poet-name {
+  font-family: 'Inter', sans-serif;
+  font-weight: 700;
+  font-size: 1.15rem;
+  line-height: 1.2;
+  color: #ffffff;
+  text-align: center;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 }
 
 .hardware-instructions {
@@ -574,6 +681,19 @@ h1, h2, h3, h4, h5, h6, p {
   animation: fadeInBlur 0.5s ease-in;
 }
 
+/* Live blurred camera feed - a soft, non-distracting result background */
+.result-camera {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+  filter: blur(16px) brightness(0.5) saturate(1.1);
+  transform: scaleX(-1) scale(1.12); /* mirror like the booth + hide blurred edges */
+}
+
 @keyframes fadeInBlur {
   from {
     filter: blur(0px) brightness(1);
@@ -641,13 +761,67 @@ h1, h2, h3, h4, h5, h6, p {
 .poem-overlay.image-display {
   justify-content: center;
   align-items: center;
+  overflow: visible; /* let the image's drop shadow breathe (poem text keeps overflow hidden) */
 }
 
-/* Pop-in animation for generated images */
-.poem-overlay.image-display img {
+/* The generated image lives inside .poem-text — center the framed image, let the shadow show */
+.poem-overlay.image-display .poem-text {
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Watermark over the result (paid mode) — swap the text span for a logo <img> when available */
+.result-watermark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0.32;
+}
+
+.result-watermark-text {
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  font-size: 2rem;
+  color: #ffffff;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.result-watermark img {
+  width: 360px; /* 2x larger; clipped to the image by the wrap's overflow:hidden */
+  height: auto;
+  filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.5));
+}
+
+/* Framed generated image (the "gift"); overflow clips the watermark to the image bounds */
+.result-image-wrap {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  border-radius: 14px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+  line-height: 0;
   opacity: 0;
   transform: scale(0.8);
-  animation: imagePopIn 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+  animation: imagePopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.result-image-wrap > img {
+  display: block;
+  max-width: 78vw;
+  max-height: calc(90vh - 360px);
+  width: auto;
+  height: auto;
+  border-radius: 14px;
 }
 
 @keyframes imagePopIn {
@@ -1005,6 +1179,55 @@ h1, h2, h3, h4, h5, h6, p {
   opacity: 0.8;
   max-height: 200px;
   overflow: auto;
+}
+
+/* Terms notice - small, centered at the bottom of the booth screen */
+.terms-notice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  z-index: 3;
+  text-align: center;
+  margin-top: 0.4rem; /* sits right under the turn-knob hint (practically the next line) */
+  pointer-events: none;
+}
+
+.terms-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.8rem; /* 2x larger */
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.8);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  margin: 0;
+  line-height: 1.25;
+}
+
+.terms-qr {
+  width: 15px; /* 25% of the original size */
+  height: 15px;
+  background: #ffffff;
+  padding: 2px;
+  border-radius: 3px;
+  /* softer, more diffuse shadow so it sits quietly on screen */
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+}
+
+.terms-qr canvas,
+.terms-qr img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.terms-url {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem; /* 2x larger */
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  margin: 0;
+  letter-spacing: 0.01em;
 }
 
 /* Portrait 9:16 optimized - no media queries needed */

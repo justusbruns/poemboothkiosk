@@ -81,6 +81,8 @@ const PrintJobService = require('../services/printJobService');
 const IS_DEV = process.argv.includes('--dev');
 const IS_STAGING = process.argv.includes('--staging');
 const FORCE_WIFI = process.argv.includes('--force-wifi');
+// Dev-only: force the terms notice on screen without flipping the backend flag
+const FORCE_TERMS = process.argv.includes('--force-terms');
 // Mock printer: use in dev mode by default, unless --real-printer is specified
 const USE_MOCK_PRINTER = process.argv.includes('--mock-printer') ||
                          (IS_DEV && !process.argv.includes('--real-printer'));
@@ -194,7 +196,12 @@ async function createWindow() {
   await initializePrinter();
 
   // Load the app AFTER printer is initialized
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // Pass a preview flag to the renderer only when --force-terms is set (isolated; does not affect other behavior)
+  if (FORCE_TERMS) {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { forceTerms: '1' } });
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
 
   // Show window when ready
   mainWindow.once('ready-to-show', () => {

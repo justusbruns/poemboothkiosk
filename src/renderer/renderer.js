@@ -51,6 +51,8 @@ const screens = {
 
 const elements = {
   loadingLottie: document.getElementById('loading-lottie'),
+  boothBrand: document.getElementById('booth-brand'),
+  boothBrandLogo: document.getElementById('booth-brand-logo'),
   loadingStatus: document.getElementById('loading-status'),
   wifiStatus: document.getElementById('wifi-status'),
   wifiVideo: document.getElementById('wifi-scanner-video'),
@@ -59,15 +61,22 @@ const elements = {
   countdownOverlay: document.getElementById('countdown-overlay'),
   countdownNumber: document.querySelector('.countdown-number'),
   whiteFlash: document.getElementById('white-flash'),
+  countdownLottie: document.getElementById('countdown-lottie'),
   actionButtonText: document.getElementById('action-button-text'),
   styleHint: document.getElementById('style-hint'),
+  priceBadge: document.getElementById('price-badge'),
+  priceAmount: document.getElementById('price-amount'),
+  resultWatermark: document.getElementById('result-watermark'),
   processingPhoto: document.getElementById('processing-photo'),
   processingStatus: document.getElementById('processing-status'),
   progressFill: document.getElementById('progress-fill'),
   resultPhoto: document.getElementById('result-photo'),
+  resultCamera: document.getElementById('result-camera'),
   poemText: document.getElementById('poem-text'),
   resultQr: document.getElementById('result-qr'),
   qrLabel: document.getElementById('qr-label'),
+  termsNotice: document.getElementById('terms-notice'),
+  termsText: document.getElementById('terms-text'),
   timerCircle: document.getElementById('timer-circle'),
   glassWipe: document.getElementById('glass-wipe'),
   qrStatus: document.getElementById('qr-status'),
@@ -96,7 +105,8 @@ const elements = {
 // =============================================================================
 
 // Apply camera rotation - size for POST-rotation dimensions
-function applyCameraRotation(videoElement) {
+// extraScale (optional) zooms the feed slightly, e.g. to hide blurred edges on the result background
+function applyCameraRotation(videoElement, extraScale = 1) {
   const rotation = state.cameraRotation || 0;
   const vw = window.innerWidth;
   const vh = window.innerHeight;
@@ -126,7 +136,8 @@ function applyCameraRotation(videoElement) {
     console.log(`[CAMERA] Landscape sizing: ${vw}×${vh}px`);
   }
 
-  videoElement.style.transform = `translate(-50%, -50%) scaleX(-1) rotate(${rotation}deg)`;
+  const scalePart = (extraScale && extraScale !== 1) ? ` scale(${extraScale})` : '';
+  videoElement.style.transform = `translate(-50%, -50%) scaleX(-1) rotate(${rotation}deg)${scalePart}`;
 }
 
 async function initializeCamera(videoElement) {
@@ -432,6 +443,16 @@ function updateUIText() {
   // Result screen - QR label (adaptive: print & save when a printer is connected)
   updateResultActionLabel();
 
+  // Booth screen - turn-knob hint + (re)start the rotating hero CTA in the active language
+  updateActionLabel();
+  startCtaRotation();
+
+  // Booth screen - terms notice text (keep in sync with the active language)
+  updateTermsNotice();
+
+  // Booth screen - price badge (currency formatting follows the active language)
+  updatePriceBadge();
+
   // Error screen
   const errorTitle = document.querySelector('#error-screen h1');
   const errorInstructions = document.querySelector('.hardware-instructions strong');
@@ -705,6 +726,9 @@ async function initializeApp() {
     // Update UI text with loaded translations
     updateUIText();
 
+    // Show terms notice on the booth screen if enabled in config
+    updateTermsNotice();
+
     // Load available poetry styles from config
     if (state.kioskConfig.style_configs && Array.isArray(state.kioskConfig.style_configs)) {
       // Extract poem_style from each style_config
@@ -728,6 +752,10 @@ async function initializeApp() {
       if (state.availableStyles.length > 1 && elements.styleHint) {
         elements.styleHint.style.display = 'block';
       }
+
+      // Build the coverflow of style cards
+      state.currentStyleIndex = 0;
+      buildStyleCoverflow();
     } else {
       console.log('[RENDERER] No poetry styles configured, using default');
       state.availableStyles = [];
@@ -1206,66 +1234,312 @@ function handleStyleChange(direction) {
     state.currentStyleIndex = (state.currentStyleIndex - 1 + state.availableStyles.length) % state.availableStyles.length;
   }
 
-  const styles = state.availableStyles;
-  const len = styles.length;
-  const currentStyle = styles[state.currentStyleIndex];
-  const prevStyle = styles[(state.currentStyleIndex - 1 + len) % len];
-  const nextStyle = styles[(state.currentStyleIndex + 1) % len];
+  const currentStyle = state.availableStyles[state.currentStyleIndex];
+  console.log('[STYLE] Selected:', currentStyle.name, `(${state.currentStyleIndex + 1}/${state.availableStyles.length})`);
 
-  console.log('[STYLE] Selected:', currentStyle.name, `(${state.currentStyleIndex + 1}/${len})`);
-
-  // Update UI to show current style (if element exists)
-  const styleIndicator = document.getElementById('style-indicator');
-  if (styleIndicator) {
-    styleIndicator.textContent = `Style: ${currentStyle.name} (${state.currentStyleIndex + 1}/${len})`;
-  }
-
-  // Get carousel elements
-  const carousel = document.querySelector('.style-carousel');
-  const actionText = document.getElementById('action-button-text');
-  const prevText = document.getElementById('style-prev');
-  const nextText = document.getElementById('style-next');
-
-  // Update all text content
-  if (actionText) actionText.innerHTML = currentStyle?.action_button_text || '';
-  if (prevText) prevText.innerHTML = prevStyle?.action_button_text || '';
-  if (nextText) nextText.innerHTML = nextStyle?.action_button_text || '';
-
-  // Animate entire carousel strip - MIRRORED direction
-  if (carousel) {
-    carousel.classList.remove('slide-left', 'slide-right');
-    void carousel.offsetWidth; // Force reflow
-
-    // Normalize direction check (handle 'counter-clockwise', 'counterclockwise', 'ccw', 'left')
-    const isCounterClockwise = direction === 'counter-clockwise' ||
-                                direction === 'counterclockwise' ||
-                                direction === 'ccw' ||
-                                direction === 'left';
-
-    // MIRRORED: counter-clockwise (left turn) → slide-right
-    const animClass = isCounterClockwise ? 'slide-right' : 'slide-left';
-    carousel.classList.add(animClass);
-
-    console.log('[STYLE] Direction:', direction, '→ Animation:', animClass);
-
-    // Show adjacent options while turning
-    carousel.classList.add('turning');
-
-    // Clear previous timeout
-    if (turningTimeout) clearTimeout(turningTimeout);
-
-    // Fade out adjacent options after 600ms of no turning
-    turningTimeout = setTimeout(() => {
-      carousel.classList.remove('turning');
-    }, 600);
-  }
-
+  // Reposition the coverflow + update the style name label (CSS transitions animate the move)
+  positionStyleCoverflow();
+  updateActionLabel();
   updateDebugInfo();
+}
+
+// Build the coverflow cards from the available styles.
+// Image styles show their example output image; poem styles show a "record sleeve" name card.
+function buildStyleCoverflow() {
+  const cf = document.getElementById('style-coverflow');
+  if (!cf) return;
+  cf.innerHTML = '';
+
+  state.availableStyles.forEach((style) => {
+    const card = document.createElement('div');
+    card.className = 'style-card';
+
+    const outUrl = style && style.example_output_image_url;
+    if (outUrl) {
+      const img = document.createElement('img');
+      img.src = outUrl;
+      img.alt = style.name || '';
+      // If the image fails to load, fall back to a name card
+      img.onerror = () => makePoemCard(card, style);
+      card.appendChild(img);
+    } else {
+      makePoemCard(card, style);
+    }
+
+    cf.appendChild(card);
+  });
+
+  positionStyleCoverflow();
+  updateActionLabel();
+}
+
+// Turn a card into a poem "record sleeve" with the poet/style name
+function makePoemCard(card, style) {
+  card.classList.add('style-card-poem');
+  card.innerHTML = '';
+  const name = document.createElement('span');
+  name.className = 'poet-name';
+  name.textContent = (style && (style.name || style.action_button_text)) || '';
+  card.appendChild(name);
+}
+
+// Position each card in the coverflow based on its circular distance from the current style
+function positionStyleCoverflow() {
+  const cf = document.getElementById('style-coverflow');
+  if (!cf) return;
+  const cards = cf.children;
+  const N = state.availableStyles.length;
+
+  for (let i = 0; i < cards.length; i++) {
+    let o = i - state.currentStyleIndex;
+    if (N > 0) {
+      // shortest way around the ring so neighbours appear on both sides
+      if (o > N / 2) o -= N;
+      if (o < -N / 2) o += N;
+    }
+    const ao = Math.abs(o);
+    const dir = Math.sign(o); // -1 = left, +1 = right
+
+    // 3D cover-flow: side cards sit closer together and tilt inward toward the centre,
+    // so many more styles fit on screen at once.
+    let x, angle, scale, opacity, z;
+    if (ao === 0)      { x = 0;   angle = 0;  scale = 1.0;  opacity = 1;    z = 30; }
+    else if (ao === 1) { x = 92;  angle = 45; scale = 0.82; opacity = 0.85; z = 20; }
+    else if (ao === 2) { x = 150; angle = 52; scale = 0.66; opacity = 0.5;  z = 12; }
+    else if (ao === 3) { x = 196; angle = 55; scale = 0.55; opacity = 0.28; z = 6; }
+    else               { x = 236; angle = 55; scale = 0.5;  opacity = 0;    z = 0; }
+
+    const tx = dir * x;
+    const rotY = -dir * angle; // left cards face right, right cards face left
+
+    const card = cards[i];
+    card.style.transform = `translateX(${tx}px) rotateY(${rotY}deg) scale(${scale})`;
+    card.style.opacity = String(opacity);
+    card.style.zIndex = String(z);
+  }
+}
+
+// Update the call-to-action under the coverflow based on how many styles there are
+function updateActionLabel() {
+  // The small "turn the knob" hint only appears when there's more than one style
+  if (elements.styleHint) {
+    elements.styleHint.textContent = t('booth.turnKnob');
+    elements.styleHint.style.display = state.availableStyles.length > 1 ? 'block' : 'none';
+  }
+}
+
+// Rotating hero CTA — cycles through inspiring phrases to invite people to use the booth
+let ctaRotationInterval = null;
+let ctaPhraseIndex = 0;
+
+function getCtaPhrases() {
+  const phrases = [t('booth.cta1')];
+  // "Trying is Free" only makes sense when guests actually have to pay
+  if (isPaymentActive()) phrases.push(t('booth.cta2'));
+  phrases.push(t('booth.cta3'));
+  return phrases;
+}
+
+function renderCtaPhrase() {
+  if (!elements.actionButtonText) return;
+  const phrases = getCtaPhrases();
+  elements.actionButtonText.innerHTML = phrases[ctaPhraseIndex % phrases.length];
+  // Re-trigger the slide-in animation every time the phrase changes
+  elements.actionButtonText.style.animation = 'none';
+  void elements.actionButtonText.offsetWidth; // reflow so the animation restarts
+  elements.actionButtonText.style.animation = 'ctaSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1)';
+}
+
+function startCtaRotation() {
+  stopCtaRotation();
+  ctaPhraseIndex = 0;
+  if (elements.actionButtonText) elements.actionButtonText.style.opacity = '1';
+  renderCtaPhrase();
+  ctaRotationInterval = setInterval(() => {
+    // Skip while capturing or off the booth screen so we don't fight the fade-out
+    if (!elements.actionButtonText || state.isProcessing || state.screen !== 'booth') return;
+    ctaPhraseIndex = (ctaPhraseIndex + 1) % getCtaPhrases().length;
+    renderCtaPhrase();
+  }, 2800);
+}
+
+function stopCtaRotation() {
+  if (ctaRotationInterval) { clearInterval(ctaRotationInterval); ctaRotationInterval = null; }
+}
+
+// On capture: the selected card rushes toward the viewer, then the countdown begins.
+function flyOutSelectedCard() {
+  return new Promise((resolve) => {
+    const cf = document.getElementById('style-coverflow');
+    if (!cf || !cf.children.length) { resolve(); return; }
+    const cards = cf.children;
+
+    // Fade out the surrounding cards and the labels
+    for (let i = 0; i < cards.length; i++) {
+      if (i !== state.currentStyleIndex) {
+        cards[i].style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+        cards[i].style.opacity = '0';
+      }
+    }
+    if (elements.styleHint) elements.styleHint.style.opacity = '0';
+    if (elements.actionButtonText) elements.actionButtonText.style.opacity = '0';
+    if (elements.termsNotice) {
+      elements.termsNotice.style.transition = 'opacity 0.3s ease';
+      elements.termsNotice.style.opacity = '0';
+    }
+
+    // Hide the pulsating circles for the countdown
+    const pulse = document.querySelector('.pulsating-circles');
+    if (pulse) {
+      pulse.style.transition = 'opacity 0.3s ease';
+      pulse.style.opacity = '0';
+    }
+
+    // Fade out the price badge with the coverflow
+    if (elements.priceBadge) {
+      elements.priceBadge.style.transition = 'opacity 0.3s ease';
+      elements.priceBadge.style.opacity = '0';
+    }
+
+    // The selected card flies toward the viewer and fades out
+    const center = cards[state.currentStyleIndex];
+    if (center) {
+      center.style.transition = 'transform 0.7s cubic-bezier(0.5, 0, 0.75, 0), opacity 0.7s ease';
+      center.style.transform = 'translateX(0) rotateY(0deg) scale(2.8)';
+      center.style.opacity = '0';
+      center.style.zIndex = '40';
+    }
+
+    setTimeout(resolve, 600);
+  });
+}
+
+// Restore the coverflow to its resting state after returning to the booth
+function resetStyleCoverflow() {
+  const cf = document.getElementById('style-coverflow');
+  if (cf && cf.children.length) {
+    const cards = cf.children;
+    for (let i = 0; i < cards.length; i++) cards[i].style.transition = 'none';
+    positionStyleCoverflow();
+    void cf.offsetWidth; // reflow so the snap-back isn't animated
+    for (let i = 0; i < cards.length; i++) cards[i].style.transition = '';
+  }
+  if (elements.styleHint) elements.styleHint.style.opacity = '';
+  if (elements.actionButtonText) elements.actionButtonText.style.opacity = '';
+  const pulse = document.querySelector('.pulsating-circles');
+  if (pulse) pulse.style.opacity = '';
+  if (elements.priceBadge) elements.priceBadge.style.opacity = '';
+  if (elements.termsNotice) elements.termsNotice.style.opacity = '';
+  updateActionLabel();
+  startCtaRotation();
 }
 
 // =============================================================================
 // Photo Capture Flow
 // =============================================================================
+
+// Cache of the raw countdown animation data (loaded once, text localized per play)
+let countdownBaseData = null;
+
+function loadJsonXHR(url) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.responseType = 'json';
+    xhr.onload = () => {
+      // file:// returns status 0 on success
+      if (xhr.status === 200 || xhr.status === 0) resolve(xhr.response);
+      else reject(new Error('HTTP ' + xhr.status));
+    };
+    xhr.onerror = () => reject(new Error('XHR error loading ' + url));
+    xhr.send();
+  });
+}
+
+// Load the countdown animation and swap its baked text layers for the active language
+async function getLocalizedCountdownData() {
+  if (!countdownBaseData) {
+    countdownBaseData = await loadJsonXHR('./assets/pb_countdown.json');
+  }
+  const data = JSON.parse(JSON.stringify(countdownBaseData)); // clone so the cached base stays clean
+  const map = {
+    txt_look: t('countdown.look'),
+    txt_ready: t('countdown.ready'),
+    txt_pose: t('countdown.pose'),
+    txt_smile: t('countdown.smile')
+  };
+  (data.layers || []).forEach((layer) => {
+    if (layer.ty === 5 && map[layer.nm] != null) {
+      try { layer.t.d.k[0].s.t = map[layer.nm]; } catch (e) { /* keep baked text on failure */ }
+    }
+  });
+  return data;
+}
+
+// Play the countdown Lottie over the live camera and capture the photo during its flash.
+// The animation is 1080x1920 (9:16), 30fps, 276 frames (9.2s, 5-4-3-2-1); the flash reaches
+// full white at frame 269, which is exactly when we grab the camera frame.
+async function playCountdownAndCapture() {
+  const CAPTURE_FRAME = 269;
+  const container = elements.countdownLottie;
+
+  let animData = null;
+  try { animData = await getLocalizedCountdownData(); }
+  catch (e) { console.error('[RENDERER] Could not load countdown animation:', e); }
+
+  return new Promise((resolve) => {
+    // Fallback: if the animation can't run, just capture immediately
+    if (!container || typeof lottie === 'undefined' || !animData) {
+      capturePhoto(elements.cameraVideo, elements.cameraCanvas)
+        .then((url) => { state.currentPhoto = url; })
+        .catch((e) => console.error('[RENDERER] Fallback capture failed:', e))
+        .finally(resolve);
+      return;
+    }
+
+    container.innerHTML = '';
+    container.style.display = 'block';
+
+    const anim = lottie.loadAnimation({
+      container,
+      renderer: 'svg',
+      loop: false,
+      autoplay: true,
+      animationData: animData,
+      rendererSettings: { preserveAspectRatio: 'xMidYMid slice' }
+    });
+
+    let captureStarted = false;
+    let capturePromise = Promise.resolve();
+
+    const doCapture = () => {
+      captureStarted = true;
+      console.log('[RENDERER] Countdown flash reached — capturing photo');
+      capturePromise = capturePhoto(elements.cameraVideo, elements.cameraCanvas)
+        .then((url) => { state.currentPhoto = url; })
+        .catch((e) => console.error('[RENDERER] Capture during flash failed:', e));
+    };
+
+    anim.addEventListener('enterFrame', (e) => {
+      if (!captureStarted && e.currentTime >= CAPTURE_FRAME) doCapture();
+    });
+
+    const finish = async () => {
+      if (!captureStarted) doCapture();   // safety net if we never hit the frame event
+      try { await capturePromise; } catch (e) {}
+      try { anim.destroy(); } catch (e) {}
+      container.style.display = 'none';
+      container.innerHTML = '';
+      resolve();
+    };
+
+    anim.addEventListener('complete', finish);
+    anim.addEventListener('data_failed', () => {
+      console.error('[RENDERER] Countdown animation failed to load');
+      finish();
+    });
+  });
+}
 
 async function handleCapture() {
   console.log('[RENDERER] handleCapture() called, isProcessing:', state.isProcessing);
@@ -1277,47 +1551,26 @@ async function handleCapture() {
   state.isProcessing = true;
 
   try {
-    console.log('[RENDERER] Starting countdown...');
-    // Show countdown overlay (transparent background - camera visible)
-    elements.countdownOverlay.style.display = 'flex';
+    // Selected style card flies toward the viewer before the countdown
+    console.log('[RENDERER] Flying out selected style card...');
+    await flyOutSelectedCard();
 
-    // Countdown: 3 → 2 → 1
-    for (let i = 3; i > 0; i--) {
-      console.log('[RENDERER] Countdown:', i);
-      elements.countdownNumber.textContent = i;
-
-      // Force reflow to restart animation
-      elements.countdownNumber.style.animation = 'none';
-      void elements.countdownNumber.offsetWidth; // trigger reflow
-      elements.countdownNumber.style.animation = '';
-
-      await sleep(1000);
-    }
-
-    // Hide countdown
-    elements.countdownOverlay.style.display = 'none';
-
-    // Show white flash and capture photo during flash
-    console.log('[RENDERER] Triggering white flash...');
-    elements.whiteFlash.style.display = 'block';
-
-    // Capture photo immediately (during flash)
-    const photoDataUrl = await capturePhoto(elements.cameraVideo, elements.cameraCanvas);
-    state.currentPhoto = photoDataUrl;
-    console.log('[RENDERER] Photo captured successfully, length:', photoDataUrl.length);
-
-    // Wait for flash animation to complete (300ms)
-    await sleep(300);
-    elements.whiteFlash.style.display = 'none';
+    // Play the new countdown animation over the live camera; it captures the photo during its flash
+    console.log('[RENDERER] Playing countdown animation...');
+    await playCountdownAndCapture();
+    console.log('[RENDERER] Photo captured during flash, length:', state.currentPhoto ? state.currentPhoto.length : 0);
 
     // Auto-proceed to processing (no confirmation needed)
-    console.log('[RENDERER] Photo captured, proceeding automatically to processPhoto()...');
+    console.log('[RENDERER] Proceeding automatically to processPhoto()...');
     await processPhoto();
 
   } catch (error) {
     console.error('[RENDERER] Capture error:', error);
-    elements.countdownOverlay.style.display = 'none';
-    elements.whiteFlash.style.display = 'none';
+    if (elements.countdownLottie) {
+      elements.countdownLottie.style.display = 'none';
+      elements.countdownLottie.innerHTML = '';
+    }
+    if (elements.whiteFlash) elements.whiteFlash.style.display = 'none';
     state.isProcessing = false;
     showError('Capture failed', error.message, error);
   }
@@ -1587,11 +1840,12 @@ async function processImageGeneration(response) {
       elements.poemText.classList.remove('typing-complete');
     }
 
-    // For AI-generated images, hide result photo to show solid black background
+    // For AI-generated images, swap the black background for the live blurred camera feed
     if (elements.resultPhoto) {
       elements.resultPhoto.src = '';
       elements.resultPhoto.style.display = 'none';
     }
+    showResultCameraBackground();
 
     // Display centered image on result overlay
     // Show the image in the poem text area, but as an <img> instead of text
@@ -1602,14 +1856,21 @@ async function processImageGeneration(response) {
         poemOverlay.classList.add('image-display');
       }
       elements.poemText.innerHTML = ''; // Clear text
+
+      // Wrap the image so the watermark can be clipped to the image bounds
+      const wrap = document.createElement('div');
+      wrap.className = 'result-image-wrap';
       const imageElement = document.createElement('img');
       imageElement.src = imageDataUrl;
-      imageElement.style.maxWidth = '100%';
-      imageElement.style.maxHeight = '100%';
-      imageElement.style.objectFit = 'contain';
-      imageElement.style.display = 'block';
-      imageElement.style.margin = '0 auto';
-      elements.poemText.appendChild(imageElement);
+      imageElement.alt = '';
+      wrap.appendChild(imageElement);
+      // The watermark lives inside the wrap so overflow:hidden trims anything past the image
+      if (elements.resultWatermark) wrap.appendChild(elements.resultWatermark);
+      elements.poemText.appendChild(wrap);
+
+      // Apply paid-mode extras (watermark) now that it sits inside the image wrap
+      updateResultPaymentUI();
+
       // Hide blinking cursor for image generation (cursor is for poem typing effect)
       elements.poemText.classList.add('typing-complete');
     }
@@ -1829,6 +2090,7 @@ function showPoemWithTypingEffect(poemText) {
   showScreen('result');
 
   // Display blurred photo background (ensure visible in case hidden from image generation)
+  hideResultCameraBackground();
   elements.resultPhoto.style.display = '';
   elements.resultPhoto.src = state.currentPhoto;
   elements.resultPhoto.classList.add('blurred');
@@ -1845,6 +2107,8 @@ function showPoemWithTypingEffect(poemText) {
   if (poemOverlay) {
     poemOverlay.classList.remove('image-display');
   }
+  // Make sure the paid watermark from a previous image result isn't shown over a poem
+  updateResultPaymentUI();
 
   // Calculate and apply optimal font size based on the plain text (what's actually displayed)
   const fontSize = calculatePoemFontSize(plainPoem);
@@ -1897,17 +2161,133 @@ function showPoemWithTypingEffect(poemText) {
   typeNextChar();
 }
 
+// True when the guest has to pay (a positive print or download price is configured)
+function isPaymentActive() {
+  const pay = state.kioskConfig && state.kioskConfig.payment;
+  if (!pay) return false;
+  const printPaid = pay.print_enabled && pay.print_tiers &&
+    Object.values(pay.print_tiers).some(v => Number(v) > 0);
+  const downloadPaid = pay.download_enabled && Number(pay.download_price) > 0;
+  return !!(printPaid || downloadPaid);
+}
+
+// Cents for a single print (first/smallest tier = most expensive per print), or null
+function getFirstPrintPriceCents() {
+  const pay = state.kioskConfig && state.kioskConfig.payment;
+  if (!pay || !pay.print_tiers) return null;
+  const qtys = Object.keys(pay.print_tiers).map(Number).filter(n => !Number.isNaN(n)).sort((a, b) => a - b);
+  return qtys.length ? pay.print_tiers[String(qtys[0])] : null;
+}
+
+// Format a price (in minor units / cents) with the right currency for the active language
+function formatPrice(cents, currency) {
+  const amount = (cents || 0) / 100;
+  const locale = getCurrentLanguage() || 'nl';
+  try {
+    const opts = { style: 'currency', currency: currency || 'EUR' };
+    if (Number.isInteger(amount)) { opts.minimumFractionDigits = 0; opts.maximumFractionDigits = 0; }
+    return new Intl.NumberFormat(locale, opts).format(amount);
+  } catch (e) {
+    return (currency === 'EUR' ? '€ ' : '') + amount.toFixed(2);
+  }
+}
+
+// Show the single-print price badge on the booth when paid printing is enabled.
+// Shows the first tier (one print) — the most expensive per-print rate.
+function updatePriceBadge() {
+  const pay = state.kioskConfig && state.kioskConfig.payment;
+  const firstTierCents = getFirstPrintPriceCents();
+
+  // Price circle on the booth (single-print cost)
+  if (elements.priceBadge && elements.priceAmount) {
+    if (pay && pay.print_enabled && firstTierCents && firstTierCents > 0) {
+      elements.priceAmount.textContent = formatPrice(firstTierCents, pay.currency);
+      elements.priceBadge.style.display = 'flex';
+    } else {
+      elements.priceBadge.style.display = 'none';
+    }
+  }
+
+}
+
+// Show/hide the terms notice (small text + mini QR) under the booth action button.
+// Driven by config.terms.enabled; content.url / content.text override the defaults.
+// Dev preview: pass --force-terms to show it without flipping the backend flag.
+function updateTermsNotice() {
+  if (!elements.termsNotice) return;
+
+  const terms = state.kioskConfig && state.kioskConfig.terms;
+  const forceShow = window.location.search.includes('forceTerms');
+  const enabled = !!(terms && terms.enabled) || forceShow;
+
+  if (!enabled) {
+    elements.termsNotice.style.display = 'none';
+    return;
+  }
+
+  const content = (terms && terms.content) || {};
+  const url = content.url || 'https://poembooth.com/terms';
+  const text = content.text || t('terms.agree');
+  const displayUrl = url.replace(/^https?:\/\//, '').replace(/\/+$/, '');
+
+  // URL sits inline at the end of the same sentence, no separate styling
+  if (elements.termsText) elements.termsText.textContent = `${text} ${displayUrl}`;
+
+  elements.termsNotice.style.display = 'flex';
+}
+
 // Set the QR action label based on whether a printer is currently connected.
 // Printing now happens from the guest's phone (portal print button), so when a
 // printer is available the QR does both — otherwise it only offers save.
 function updateResultActionLabel() {
   if (!elements.qrLabel) return;
+
+  // Paid mode: a stronger call-to-action with the price ("Print for just €4 / Scan the QR code now")
+  if (isPaymentActive()) {
+    const cents = getFirstPrintPriceCents();
+    const pay = state.kioskConfig && state.kioskConfig.payment;
+    const priceLabel = (cents && cents > 0) ? formatPrice(cents, pay && pay.currency) : '';
+    const line1 = priceLabel
+      ? `${t('result.printForJust')} ${priceLabel}`
+      : t('result.scanToPrintAndSave');
+    elements.qrLabel.innerHTML = `${line1}<br/>${t('result.scanQrNow')}`;
+    return;
+  }
+
   const canPrint = state.printerStatus && state.printerStatus.available &&
     (state.printerStatus.status === 'ready' || state.printerStatus.status === 'printing');
   // innerHTML: the print&save label uses a <br/> to sit nicely on two lines
   elements.qrLabel.innerHTML = canPrint
     ? t('result.scanToPrintAndSave')
     : t('result.scanToSave');
+}
+
+// Watermark over the result — only on generated images in paid mode (never on poems)
+function updateResultPaymentUI() {
+  const paid = isPaymentActive();
+  const overlay = elements.poemText && elements.poemText.parentElement;
+  const isImage = overlay && overlay.classList.contains('image-display');
+
+  if (elements.resultWatermark) {
+    elements.resultWatermark.style.display = (paid && isImage) ? 'flex' : 'none';
+  }
+}
+
+// Show the live, blurred camera feed as the result background (for generated images)
+function showResultCameraBackground() {
+  if (!elements.resultCamera) return;
+  if (state.cameraStream && elements.resultCamera.srcObject !== state.cameraStream) {
+    elements.resultCamera.srcObject = state.cameraStream;
+    const p = elements.resultCamera.play && elements.resultCamera.play();
+    if (p && p.catch) p.catch(() => {});
+  }
+  elements.resultCamera.style.display = 'block';
+  // Match the booth camera's rotation + mirroring (extra zoom hides the blurred edges)
+  applyCameraRotation(elements.resultCamera, 1.12);
+}
+
+function hideResultCameraBackground() {
+  if (elements.resultCamera) elements.resultCamera.style.display = 'none';
 }
 
 function showQRCode(publicViewUrl) {
@@ -1981,13 +2361,17 @@ function showQRCode(publicViewUrl) {
   // Adapt the QR label to the printer state (print & save vs save)
   updateResultActionLabel();
 
-  // Start 30-second countdown timer
+  // Paid-mode extras: watermark over the image + pulsing attention glow
+  updateResultPaymentUI();
+
+  // Start countdown timer (longer in paid mode)
   start30SecondTimer();
 }
 
 // 30-second countdown with glass wipe animation
 function start30SecondTimer() {
-  const TIMER_DURATION = 30000; // 30 seconds
+  // Paid mode gives guests more time to scan, pay, save and print
+  const TIMER_DURATION = isPaymentActive() ? 60000 : 30000; // 60s when paying, else 30s
   const circumference = 440; // Match CSS stroke-dasharray value (r=70px)
   let startTime = Date.now();
 
@@ -2074,6 +2458,8 @@ function triggerGlassWipe() {
     if (elements.resultPhoto) {
       elements.resultPhoto.style.display = '';
     }
+    // Detach the live camera background until the next generated-image result
+    hideResultCameraBackground();
 
     // Reset state and return to booth screen
     state.currentPhoto = null;
@@ -2173,6 +2559,31 @@ function initLoadingLottie() {
   }
 }
 
+// Animate the Poem Booth branding logo (first frames of the startup animation) once,
+// the first time the booth screen appears, then freeze the formed logo.
+let boothBrandPlayed = false;
+function playBoothBrandLogo() {
+  if (boothBrandPlayed) return;
+  const container = elements.boothBrandLogo;
+  if (!container || typeof lottie === 'undefined') return;
+  boothBrandPlayed = true;
+  try {
+    const anim = lottie.loadAnimation({
+      container,
+      renderer: 'svg',
+      loop: false,
+      autoplay: false,
+      path: './assets/pb-animated-logo.json'
+    });
+    anim.addEventListener('DOMLoaded', () => {
+      anim.playSegments([0, 118], true); // logo appears, then freezes
+    });
+    state.boothBrandAnimation = anim;
+  } catch (e) {
+    console.error('[LOTTIE] Failed to init booth brand logo:', e);
+  }
+}
+
 function showScreen(screenName) {
   // Cancel typing animation when leaving result screen
   if (state.screen === 'result' && screenName !== 'result') {
@@ -2192,6 +2603,8 @@ function showScreen(screenName) {
 
       screens[screenName].classList.add('active');
       state.screen = screenName;
+      updateBoothBrandVisibility();
+      if (screenName === 'booth') { resetStyleCoverflow(); playBoothBrandLogo(); }
     }, 1000); // Match CSS transition duration
   } else {
     // Normal screen transition
@@ -2201,6 +2614,18 @@ function showScreen(screenName) {
 
     screens[screenName].classList.add('active');
     state.screen = screenName;
+    updateBoothBrandVisibility();
+
+    // Reset the style coverflow when returning to the booth (after a capture)
+    if (screenName === 'booth') { resetStyleCoverflow(); playBoothBrandLogo(); }
+  }
+}
+
+// Branding (logo + URL) stays visible on the booth and while waiting for the result
+function updateBoothBrandVisibility() {
+  if (elements.boothBrand) {
+    const show = state.screen === 'booth' || state.screen === 'processing';
+    elements.boothBrand.classList.toggle('show', show);
   }
 }
 
@@ -2424,24 +2849,32 @@ async function checkForConfigUpdates() {
 
       // Update poetry styles
       if (newConfig.style_configs && Array.isArray(newConfig.style_configs)) {
+        // Only rebuild the coverflow if the styles actually changed (avoids image re-flash)
+        const stylesChanged = JSON.stringify(oldConfig.style_configs) !== JSON.stringify(newConfig.style_configs);
+
         // Extract poem_style from each style_config
         state.availableStyles = newConfig.style_configs.map(sc => sc.poem_style);
         console.log('[CONFIG] Updated poetry styles:', state.availableStyles.map(s => s.name).join(', '));
 
-        // Update action button text if on booth screen
-        if (state.screen === 'booth' && state.availableStyles.length > 0) {
-          const currentStyle = state.availableStyles[state.currentStyleIndex] || state.availableStyles[0];
-          if (currentStyle.action_button_text && elements.actionButtonText) {
-            elements.actionButtonText.innerHTML = currentStyle.action_button_text;
-            console.log('[CONFIG] Updated action button text:', currentStyle.action_button_text);
-          }
+        // Keep the current index in range
+        if (state.currentStyleIndex >= state.availableStyles.length) {
+          state.currentStyleIndex = 0;
         }
 
         // Update style hint visibility
         if (elements.styleHint) {
           elements.styleHint.style.display = state.availableStyles.length > 1 ? 'block' : 'none';
         }
+
+        // Rebuild the coverflow cards with the new styles
+        if (stylesChanged) buildStyleCoverflow();
       }
+
+      // Update terms notice (enabled flag / content can change live)
+      updateTermsNotice();
+
+      // Update the price badge (payment config can change live)
+      updatePriceBadge();
 
       // Log other config changes
       if (oldConfig.printing_enabled !== newConfig.printing_enabled) {

@@ -85,6 +85,9 @@
 
         <!-- White Flash Overlay -->
         <div id="white-flash" class="white-flash" style="display: none;"></div>
+
+        <!-- Countdown animation overlay (transparent Lottie over the live camera; ends with a flash) -->
+        <div id="countdown-lottie" class="countdown-lottie" style="display: none;"></div>
       </div>
 
       <!-- Floating Action Button with Pulsating Circles -->
@@ -94,13 +97,22 @@
           <div class="pulse-ring"></div>
           <div class="pulse-ring"></div>
         </div>
-        <!-- Style carousel for coverflow-like animation -->
-        <div class="style-carousel">
-          <div id="style-prev" class="style-option style-prev"></div>
-          <div id="action-button-text" class="action-button-text">Press for Poetry</div>
-          <div id="style-next" class="style-option style-next"></div>
+        <!-- Hero call-to-action above the styles (animated, rotates through phrases) -->
+        <div id="action-button-text" class="action-button-text">Press<br/>the Button</div>
+        <!-- Style coverflow (cards injected by JS) with the price badge overlapping the centre card's bottom -->
+        <div class="coverflow-wrap">
+          <div id="style-coverflow" class="style-coverflow"></div>
+          <!-- Price badge (shown when payment is enabled): cost of a single print -->
+          <div id="price-badge" class="price-badge" style="display: none;">
+            <span id="price-amount" class="price-amount"></span>
+          </div>
         </div>
+        <!-- Small secondary hint below the styles, shown only when there are multiple styles -->
         <div id="style-hint" class="style-hint" style="display: none;">Turn knob to change style</div>
+        <!-- Terms notice (shown when config.terms.enabled) - flows right under the hint -->
+        <div id="terms-notice" class="terms-notice" style="display: none;">
+          <p id="terms-text" class="terms-text">By starting you agree to our Terms &amp; Privacy Policy poembooth.com/terms</p>
+        </div>
       </div>
     </div>
   </div>
@@ -121,12 +133,18 @@
 
   <!-- Result Screen (blurred photo + text overlay + circles) -->
   <div id="result-screen" class="screen">
+    <!-- Live blurred camera background (shown behind generated-image results) -->
+    <video id="result-camera" class="result-camera" autoplay playsinline muted style="display: none;"></video>
     <!-- Blurred Photo Background -->
     <img id="result-photo" class="result-photo blurred" src="" alt="" />
 
     <!-- Poem Text Overlay -->
     <div class="poem-overlay">
       <div id="poem-text" class="poem-text"></div>
+      <!-- Watermark over the result (paid mode): Poem Booth logo -->
+      <div id="result-watermark" class="result-watermark" style="display: none;">
+        <img src="assets/pb-logo.svg" alt="Poem Booth" />
+      </div>
     </div>
 
     <!-- QR Code and Print Circles -->
@@ -163,6 +181,12 @@
         </details>
       </div>
     </div>
+  </div>
+
+  <!-- Poem Booth branding (animated logo + URL) - global overlay, shown on booth + processing -->
+  <div id="booth-brand" class="booth-brand">
+    <div id="booth-brand-logo" class="booth-brand-logo"></div>
+    <p class="booth-brand-url">poembooth.com</p>
   </div>
 
   <!-- Debug Panel (dev mode only) -->

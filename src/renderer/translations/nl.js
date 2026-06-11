@@ -15,7 +15,13 @@ export const nl = {
   },
   booth: {
     pressForPoetry: 'Druk voor Poëzie',
-    turnKnob: 'Draai aan de knop om van stijl te veranderen'
+    turnKnob: 'Draai aan de knop om van stijl te veranderen',
+    turnAndPress: 'Draai aan de knop & Druk',
+    pressForMasterpiece: 'Druk voor je Meesterwerk',
+    tryingFree: 'Proberen is altijd gratis',
+    cta1: 'Druk op<br/>de Knop',
+    cta2: 'Proberen<br/>is Gratis',
+    cta3: 'Krijg nu je<br/>Meesterwerk!'
   },
   countdown: {
     // Cijfers zijn universeel, geen vertaling nodig
@@ -55,7 +61,18 @@ export const nl = {
   },
   result: {
     scanToSave: 'Scannen om op te slaan',
-    scanToPrintAndSave: 'Scan om te Bewaren<br/>& Printen'
+    scanToPrintAndSave: 'Scan om te Bewaren<br/>& Printen',
+    printForJust: 'Print voor maar',
+    scanQrNow: 'Scan nu de QR-code'
+  },
+  terms: {
+    agree: 'Door te starten ga je akkoord met onze voorwaarden en privacybeleid'
+  },
+  countdown: {
+    look: 'Kijk hier',
+    ready: 'Klaar?',
+    pose: 'Poseer',
+    smile: 'Lach'
   },
   error: {
     somethingWentWrong: 'Er is iets misgegaan',
