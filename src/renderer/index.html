@@ -92,15 +92,16 @@
 
       <!-- Floating Action Button with Pulsating Circles -->
       <div class="floating-action">
-        <div class="pulsating-circles">
-          <div class="pulse-ring"></div>
-          <div class="pulse-ring"></div>
-          <div class="pulse-ring"></div>
-        </div>
         <!-- Hero call-to-action above the styles (animated, rotates through phrases) -->
         <div id="action-button-text" class="action-button-text">Press<br/>the Button</div>
         <!-- Style coverflow (cards injected by JS) with the price badge overlapping the centre card's bottom -->
         <div class="coverflow-wrap">
+          <!-- Pulsating circles centred on the middle style card -->
+          <div class="pulsating-circles">
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring"></div>
+          </div>
           <div id="style-coverflow" class="style-coverflow"></div>
           <!-- Price badge (shown when payment is enabled): cost of a single print -->
           <div id="price-badge" class="price-badge" style="display: none;">
@@ -161,6 +162,30 @@
         </div>
         <p id="qr-label" class="circle-label">Scan to print &amp; save</p>
       </div>
+
+      <!-- Print Circle (hold to print on the kiosk; only in free mode when a printer is connected) -->
+      <div id="print-container" class="circle-container" style="display: none;">
+        <div id="print-circle" class="action-circle">
+          <!-- Heroicons Printer Icon -->
+          <div class="print-icon" id="print-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="48" height="48">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V6.75a2.25 2.25 0 00-2.25-2.25h-6a2.25 2.25 0 00-2.25 2.25v.465m10.5 0v.465M9 11.25h6" />
+            </svg>
+          </div>
+          <!-- Heroicons Check Circle Icon (Solid) -->
+          <div class="print-done-icon" id="print-done-icon" style="display: none;">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="56" height="56">
+              <path fill-rule="evenodd" d="M2.25 12c0-5.385 4.365-9.75 9.75-9.75s9.75 4.365 9.75 9.75-4.365 9.75-9.75 9.75S2.25 17.385 2.25 12zm13.36-1.814a.75.75 0 10-1.22-.872l-3.236 4.53L9.53 12.22a.75.75 0 00-1.06 1.06l2.25 2.25a.75.75 0 001.14-.094l3.75-5.25z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <!-- Print Progress Circle (SVG stroke animation) -->
+          <svg class="progress-ring">
+            <circle class="progress-circle-bg" cx="75" cy="75" r="70" />
+            <circle class="progress-circle" id="print-progress" cx="75" cy="75" r="70" />
+          </svg>
+        </div>
+        <p id="print-label" class="circle-label">Hold to print</p>
+      </div>
     </div>
 
     <!-- Glass Wipe Overlay (for transition animation) -->
@@ -186,7 +211,7 @@
   <!-- Poem Booth branding (animated logo + URL) - global overlay, shown on booth + processing -->
   <div id="booth-brand" class="booth-brand">
     <div id="booth-brand-logo" class="booth-brand-logo"></div>
-    <p class="booth-brand-url">poembooth.com</p>
+    <p id="booth-brand-url" class="booth-brand-url">poembooth.com</p>
   </div>
 
   <!-- Debug Panel (dev mode only) -->

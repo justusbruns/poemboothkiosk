@@ -63,7 +63,8 @@ export const de = {
     scanToSave: 'Scannen zum Speichern',
     scanToPrintAndSave: 'Scannen zum Speichern<br/>& Drucken',
     printForJust: 'Drucken für nur',
-    scanQrNow: 'Scanne jetzt den QR-Code'
+    scanQrNow: 'Scanne jetzt den QR-Code',
+    holdToPrint: 'Knopf gedrückt halten zum Drucken'
   },
   terms: {
     agree: 'Mit dem Start akzeptierst du unsere AGB und Datenschutzerklärung'

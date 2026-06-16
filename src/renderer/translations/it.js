@@ -63,7 +63,8 @@ export const it = {
     scanToSave: 'Scansiona per salvare',
     scanToPrintAndSave: 'Scansiona per Salvare<br/>e Stampare',
     printForJust: 'Stampa per solo',
-    scanQrNow: 'Scansiona il QR code ora'
+    scanQrNow: 'Scansiona il QR code ora',
+    holdToPrint: 'Tieni premuto il pulsante per stampare'
   },
   terms: {
     agree: 'Iniziando accetti i nostri termini e l’informativa sulla privacy'

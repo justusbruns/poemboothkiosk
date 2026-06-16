@@ -341,19 +341,21 @@ class ApiClient {
     }
   }
 
-  // Log print action
+  // Register a kiosk (hold-to-print) print. The backend writes the print_jobs row and
+  // enforces the per-photo max, replying { logged: true } when the print is allowed or
+  // { logged: false } when the max has been reached.
   async logPrint(sessionId) {
     try {
-      console.log('[API] Logging print action...');
+      console.log('[API] Registering kiosk print...');
 
-      const response = await this.request('POST', '/api/kiosk/log-print', {
+      const response = await this.request('POST', '/api/kiosk/print-jobs', {
         session_id: sessionId
       });
 
-      return response;
+      return response; // { logged: boolean, ... }
     } catch (error) {
       console.error('[API] Print logging error:', error);
-      // Don't throw - printing should work even if logging fails
+      // Don't throw - printing should still work if the call fails (e.g. offline)
       return { success: false };
     }
   }

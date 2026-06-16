@@ -63,7 +63,8 @@ export const nl = {
     scanToSave: 'Scannen om op te slaan',
     scanToPrintAndSave: 'Scan om te Bewaren<br/>& Printen',
     printForJust: 'Print voor maar',
-    scanQrNow: 'Scan nu de QR-code'
+    scanQrNow: 'Scan nu de QR-code',
+    holdToPrint: 'Knop lang indrukken om te printen'
   },
   terms: {
     agree: 'Door te starten ga je akkoord met onze voorwaarden en privacybeleid'

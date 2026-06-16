@@ -22,6 +22,9 @@ const state = {
   availableStyles: [],
   printHoldStart: null,
   printHoldInterval: null,
+  maxPrints: 1,               // config.max_prints_per_photo (how many kiosk prints per photo)
+  printsRemaining: 0,         // prints left for the current result (reset when a result is shown)
+  glassWiping: false,         // guard so the return-to-booth wipe can't fire twice
   timerAnimationFrame: null, // 30-second auto-return timer
   lottieAnimation: null,
   loadingLottieAnimation: null,
@@ -30,6 +33,8 @@ const state = {
   installedWifiSsid: null, // SSID of the booking WiFi profile already installed (dedup)
   loadingTextInterval: null,
   loadingTextIndex: 0,
+  showBoothBrand: false,      // whether the top branding slot is shown (set from config)
+  isCapturing: false,         // true from countdown start until back on the idle booth screen
   typingTimeoutId: null,      // Current pending typing animation timeout
   typingSessionId: null,      // Unique ID for current typing session
   // Update state
@@ -53,6 +58,7 @@ const elements = {
   loadingLottie: document.getElementById('loading-lottie'),
   boothBrand: document.getElementById('booth-brand'),
   boothBrandLogo: document.getElementById('booth-brand-logo'),
+  boothBrandUrl: document.getElementById('booth-brand-url'),
   loadingStatus: document.getElementById('loading-status'),
   wifiStatus: document.getElementById('wifi-status'),
   wifiVideo: document.getElementById('wifi-scanner-video'),
@@ -75,6 +81,11 @@ const elements = {
   poemText: document.getElementById('poem-text'),
   resultQr: document.getElementById('result-qr'),
   qrLabel: document.getElementById('qr-label'),
+  printContainer: document.getElementById('print-container'),
+  printIcon: document.getElementById('print-icon'),
+  printDoneIcon: document.getElementById('print-done-icon'),
+  printProgress: document.getElementById('print-progress'),
+  printLabel: document.getElementById('print-label'),
   termsNotice: document.getElementById('terms-notice'),
   termsText: document.getElementById('terms-text'),
   timerCircle: document.getElementById('timer-circle'),
@@ -443,6 +454,11 @@ function updateUIText() {
   // Result screen - QR label (adaptive: print & save when a printer is connected)
   updateResultActionLabel();
 
+  // Result screen - hold-to-print label
+  if (elements.printLabel) {
+    elements.printLabel.textContent = t('result.holdToPrint');
+  }
+
   // Booth screen - turn-knob hint + (re)start the rotating hero CTA in the active language
   updateActionLabel();
   startCtaRotation();
@@ -712,6 +728,10 @@ async function initializeApp() {
     // Load camera rotation from config
     state.cameraRotation = state.kioskConfig.camera_rotation || 0;
     console.log('[RENDERER] Camera rotation from backend:', state.cameraRotation, 'degrees');
+
+    // How many kiosk prints are allowed per photo (default 1)
+    state.maxPrints = Math.max(1, parseInt(state.kioskConfig.max_prints_per_photo, 10) || 1);
+    console.log('[RENDERER] Max prints per photo:', state.maxPrints);
 
     // Load language from config (new field from backend)
     if (state.kioskConfig.kiosk_language) {
@@ -1093,20 +1113,35 @@ function setupEventListeners() {
       console.log('[HARDWARE] Calling handleCapture()...');
       handleCapture();
     } else if (state.screen === 'result' && !state.isProcessing) {
-      // Result screen: the physical button returns to booth for the next guest.
-      // Printing is done from the guest's phone via the QR code, not on the kiosk.
-      console.log('[HARDWARE] Button on result screen - returning to booth');
-      cancel30SecondTimer();
-      triggerGlassWipe();
+      if (isLocalPrintMode()) {
+        // Hold-to-print mode: the button ONLY prints — it never returns to booth early.
+        // The result stays up until the countdown timer ends.
+        if (canLocalPrint() && !state.isPrinting) {
+          console.log('[HARDWARE] Starting print hold on result screen');
+          startPrintHold();
+        } else {
+          console.log('[HARDWARE] Print busy or max reached - staying on result until timer ends');
+        }
+      } else {
+        // Paid mode / no printer: button returns to booth for the next guest
+        console.log('[HARDWARE] Button on result screen - returning to booth');
+        returnToBoothFromResult();
+      }
     } else {
       console.log('[HARDWARE] Ignoring button press - wrong screen or already processing');
     }
   });
 
-  // Hardware button release - retry from error screen
-  // (Result-screen return-to-booth is handled on button PRESS now; printing moved to the phone.)
+  // Hardware button release - cancel an in-progress print hold, or retry from error screen
   window.electronAPI.onButtonRelease((data) => {
-    console.log('[HARDWARE] Button release event received:', data);
+    console.log('[HARDWARE] Button release event received:', data, 'printHoldStart:', !!state.printHoldStart, 'isPrinting:', state.isPrinting);
+
+    // Released before the 2s hold completed → cancel the print hold and stay on the result
+    if (state.printHoldStart && !state.isPrinting) {
+      console.log('[HARDWARE] Cancelling print hold on button release');
+      cancelPrintHold();
+      return;
+    }
 
     // Small delay to avoid race conditions with screen transitions
     setTimeout(() => {
@@ -1191,12 +1226,21 @@ function setupEventListeners() {
         handleCapture();
       }
 
-      // Enter (physical button) on result screen - return to booth for the next guest
-      if (e.code === 'Enter' && state.screen === 'result' && !e.repeat) {
+      // Enter/P on result screen - hold to print (free mode + printer) or return to booth
+      if ((e.code === 'Enter' || e.code === 'KeyP') && state.screen === 'result' && !e.repeat) {
         e.preventDefault();
-        console.log('[HARDWARE] Enter on result screen - returning to booth');
-        cancel30SecondTimer();
-        triggerGlassWipe();
+        if (isLocalPrintMode()) {
+          // Hold-to-print mode: only print; never return to booth early (wait for timer)
+          if (canLocalPrint() && !state.isPrinting) {
+            console.log('[DEV] Enter/P on result - starting print hold');
+            startPrintHold();
+          } else {
+            console.log('[DEV] Print busy or max reached - staying on result until timer ends');
+          }
+        } else {
+          console.log('[DEV] Enter/P on result - returning to booth');
+          returnToBoothFromResult();
+        }
       }
 
       // Arrow keys - change style (booth screen)
@@ -1214,6 +1258,14 @@ function setupEventListeners() {
       if (e.code === 'KeyR' && state.screen === 'result') {
         e.preventDefault();
         triggerGlassWipe();
+      }
+    });
+
+    // Enter/P release on result screen - cancel print hold (released before 2s)
+    document.addEventListener('keyup', (e) => {
+      if ((e.code === 'Enter' || e.code === 'KeyP') && state.screen === 'result') {
+        e.preventDefault();
+        cancelPrintHold();
       }
     });
 
@@ -1334,8 +1386,8 @@ let ctaPhraseIndex = 0;
 
 function getCtaPhrases() {
   const phrases = [t('booth.cta1')];
-  // "Trying is Free" only makes sense when guests actually have to pay
-  if (isPaymentActive()) phrases.push(t('booth.cta2'));
+  // "Trying is Free" only makes sense when guests actually have to pay to print
+  if (isPaidPrintActive()) phrases.push(t('booth.cta2'));
   phrases.push(t('booth.cta3'));
   return phrases;
 }
@@ -1344,10 +1396,11 @@ function renderCtaPhrase() {
   if (!elements.actionButtonText) return;
   const phrases = getCtaPhrases();
   elements.actionButtonText.innerHTML = phrases[ctaPhraseIndex % phrases.length];
-  // Re-trigger the slide-in animation every time the phrase changes
+  // Re-trigger the grow-in animation every time the phrase changes (smooth ease-out,
+  // no bounce — scales up from small with a gentle fade)
   elements.actionButtonText.style.animation = 'none';
   void elements.actionButtonText.offsetWidth; // reflow so the animation restarts
-  elements.actionButtonText.style.animation = 'ctaSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1)';
+  elements.actionButtonText.style.animation = 'ctaSlideIn 0.75s cubic-bezier(0.16, 1, 0.3, 1)';
 }
 
 function startCtaRotation() {
@@ -1551,6 +1604,10 @@ async function handleCapture() {
   state.isProcessing = true;
 
   try {
+    // Hide the top branding the moment capture begins — it only belongs on the idle home screen
+    state.isCapturing = true;
+    updateBoothBrandVisibility();
+
     // Selected style card flies toward the viewer before the countdown
     console.log('[RENDERER] Flying out selected style card...');
     await flyOutSelectedCard();
@@ -1878,6 +1935,9 @@ async function processImageGeneration(response) {
     // Adapt the QR label to the printer state (print & save vs save)
     updateResultActionLabel();
 
+    // Show/hide the hold-to-print circle (free mode + printer)
+    updatePrintContainerVisibility();
+
     // If image was already uploaded by backend, skip upload step
     if (response.storage_url || response.rendered_image_url) {
       console.log('[RENDERER] Image already uploaded by backend, skipping upload');
@@ -2118,6 +2178,9 @@ function showPoemWithTypingEffect(poemText) {
   // Adapt the QR label to the printer state (print & save vs save)
   updateResultActionLabel();
 
+  // Show/hide the hold-to-print circle (free mode + printer)
+  updatePrintContainerVisibility();
+
   // Add typing effect with human-like timing
   let charIndex = 0;
   const baseSpeed = 30; // base milliseconds per character
@@ -2169,6 +2232,16 @@ function isPaymentActive() {
     Object.values(pay.print_tiers).some(v => Number(v) > 0);
   const downloadPaid = pay.download_enabled && Number(pay.download_price) > 0;
   return !!(printPaid || downloadPaid);
+}
+
+// True only when guests must PAY TO PRINT (portal paid printing is enabled with a
+// positive tier). The kiosk's free hold-to-print is suppressed in that case so
+// prints go through the paid portal flow. Paid *downloads* don't affect this.
+function isPaidPrintActive() {
+  const pay = state.kioskConfig && state.kioskConfig.payment;
+  if (!pay) return false;
+  return !!(pay.print_enabled && pay.print_tiers &&
+    Object.values(pay.print_tiers).some(v => Number(v) > 0));
 }
 
 // Cents for a single print (first/smallest tier = most expensive per print), or null
@@ -2242,10 +2315,11 @@ function updateTermsNotice() {
 function updateResultActionLabel() {
   if (!elements.qrLabel) return;
 
-  // Paid mode: a stronger call-to-action with the price ("Print for just €4 / Scan the QR code now")
-  if (isPaymentActive()) {
+  const pay = state.kioskConfig && state.kioskConfig.payment;
+
+  // Pay-to-print: a stronger call-to-action with the price ("Print for just €4 / Scan the QR code now")
+  if (isPaidPrintActive()) {
     const cents = getFirstPrintPriceCents();
-    const pay = state.kioskConfig && state.kioskConfig.payment;
     const priceLabel = (cents && cents > 0) ? formatPrice(cents, pay && pay.currency) : '';
     const line1 = priceLabel
       ? `${t('result.printForJust')} ${priceLabel}`
@@ -2254,17 +2328,21 @@ function updateResultActionLabel() {
     return;
   }
 
-  const canPrint = state.printerStatus && state.printerStatus.available &&
+  // Free: the QR saves the photo to the guest's phone. Only mention printing when the
+  // PORTAL can print (printing enabled in config) — local hold-to-print uses the
+  // physical button, not the QR. Otherwise it's simply "scan to save".
+  const printerAttached = state.printerStatus && state.printerStatus.available &&
     (state.printerStatus.status === 'ready' || state.printerStatus.status === 'printing');
-  // innerHTML: the print&save label uses a <br/> to sit nicely on two lines
-  elements.qrLabel.innerHTML = canPrint
+  const portalCanPrint = !!(pay && pay.print_enabled) && printerAttached;
+  elements.qrLabel.innerHTML = portalCanPrint
     ? t('result.scanToPrintAndSave')
     : t('result.scanToSave');
 }
 
-// Watermark over the result — only on generated images in paid mode (never on poems)
+// Watermark over the result — only on generated images when pay-to-print is active
+// (never on poems, and not when printing is free). Paid downloads don't add it.
 function updateResultPaymentUI() {
-  const paid = isPaymentActive();
+  const paid = isPaidPrintActive();
   const overlay = elements.poemText && elements.poemText.parentElement;
   const isImage = overlay && overlay.classList.contains('image-display');
 
@@ -2293,6 +2371,10 @@ function hideResultCameraBackground() {
 function showQRCode(publicViewUrl) {
   console.log('[RENDERER] Showing QR code for:', publicViewUrl);
 
+  // Fresh print allowance for this result, and a clean idle print circle
+  state.printsRemaining = state.maxPrints;
+  resetPrintCircleIdle();
+
   // Generate styled QR code using qr-code-styling library
   if (typeof QRCodeStyling !== 'undefined') {
     try {
@@ -2303,14 +2385,16 @@ function showQRCode(publicViewUrl) {
       const qrCode = new QRCodeStyling({
         type: "canvas",
         shape: "square",
-        width: 140,
-        height: 140,
+        width: 220,
+        height: 220,
         data: publicViewUrl,
         margin: 0,
         qrOptions: {
           typeNumber: "0",
           mode: "Byte",
-          errorCorrectionLevel: "Q"
+          // Lower error correction → fewer, larger modules → a cleaner, simpler,
+          // easier-to-scan code (the white circle around it is the quiet zone).
+          errorCorrectionLevel: "L"
         },
         imageOptions: {
           saveAsBlob: true,
@@ -2319,13 +2403,15 @@ function showQRCode(publicViewUrl) {
           margin: 0
         },
         dotsOptions: {
-          type: "dots",
+          type: "rounded",
           color: "#000000",
           roundSize: true
         },
+        // Transparent background so the QR sits cleanly on the white circle and never
+        // covers the countdown ring at the corners.
         backgroundOptions: {
           round: 0,
-          color: "#ffffff"
+          color: "transparent"
         },
         image: null,
         cornersSquareOptions: {
@@ -2345,10 +2431,16 @@ function showQRCode(publicViewUrl) {
 
       // Show QR circle with pop animation after QR code is generated
       const qrCircle = document.getElementById('qr-circle');
+      const printCircle = document.getElementById('print-circle');
 
       setTimeout(() => {
         if (qrCircle) {
           qrCircle.classList.add('show');
+        }
+        // Pop the hold-to-print circle in at the SAME time as the QR (if it's available;
+        // updatePrintContainerVisibility() set its display just before this fires)
+        if (printCircle && elements.printContainer && elements.printContainer.style.display !== 'none') {
+          printCircle.classList.add('show');
         }
       }, 100);
     } catch (error) {
@@ -2361,6 +2453,9 @@ function showQRCode(publicViewUrl) {
   // Adapt the QR label to the printer state (print & save vs save)
   updateResultActionLabel();
 
+  // Show/hide the hold-to-print circle (free mode + printer)
+  updatePrintContainerVisibility();
+
   // Paid-mode extras: watermark over the image + pulsing attention glow
   updateResultPaymentUI();
 
@@ -2370,8 +2465,8 @@ function showQRCode(publicViewUrl) {
 
 // 30-second countdown with glass wipe animation
 function start30SecondTimer() {
-  // Paid mode gives guests more time to scan, pay, save and print
-  const TIMER_DURATION = isPaymentActive() ? 60000 : 30000; // 60s when paying, else 30s
+  // Pay-to-print gives guests more time to scan, pay, save and print; otherwise 30s
+  const TIMER_DURATION = isPaidPrintActive() ? 60000 : 30000; // 60s when paying to print, else 30s
   const circumference = 440; // Match CSS stroke-dasharray value (r=70px)
   let startTime = Date.now();
 
@@ -2434,8 +2529,17 @@ function cancel30SecondTimer() {
   }
 }
 
+// Cancel the auto-return timer and wipe back to the booth for the next guest.
+function returnToBoothFromResult() {
+  cancel30SecondTimer();
+  triggerGlassWipe();
+}
+
 // Glass wipe animation - return to booth screen
 function triggerGlassWipe() {
+  if (state.glassWiping) return; // already returning to booth - don't double-fire
+  state.glassWiping = true;
+
   // Cancel any in-progress typing animation
   cancelTypingAnimation();
 
@@ -2454,6 +2558,11 @@ function triggerGlassWipe() {
       qrCircle.classList.remove('show');
     }
 
+    // Reset the print circle (icons + progress ring) for the next session
+    const printCircle = document.getElementById('print-circle');
+    if (printCircle) printCircle.classList.remove('show');
+    resetPrintCircleIdle();
+
     // Reset result photo for next session (may have been hidden for image generation)
     if (elements.resultPhoto) {
       elements.resultPhoto.style.display = '';
@@ -2465,9 +2574,244 @@ function triggerGlassWipe() {
     state.currentPhoto = null;
     state.currentSession = null;
     state.isProcessing = false;
+    state.glassWiping = false;
 
     showScreen('booth');
   }, 800);
+}
+
+// Whether this result is in "hold-to-print" mode at all: free mode (paid prints go
+// through the portal) and a printer is connected and ready. In this mode the result
+// screen is print-oriented — the button only prints and never returns to booth early.
+function isLocalPrintMode() {
+  return !isPaidPrintActive() &&
+    state.printerStatus && state.printerStatus.available &&
+    (state.printerStatus.status === 'ready' || state.printerStatus.status === 'printing');
+}
+
+// Whether the kiosk's own attached printer can print *right now*: hold-to-print mode
+// AND the guest hasn't used up the allowed prints for this photo.
+function canLocalPrint() {
+  return isLocalPrintMode() && state.printsRemaining > 0;
+}
+
+// Show/hide the hold-to-print circle: only when pay-to-print is off and a printer
+// is connected. The circle must pop in *together with* the QR, so we only add the
+// `show` (pop) class once the QR circle is already shown — the synchronized first
+// pop is done in showQRCode(); here it only catches later printer-status changes.
+function updatePrintContainerVisibility() {
+  if (!elements.printContainer) return;
+  const available = isLocalPrintMode();
+  elements.printContainer.style.display = available ? 'flex' : 'none';
+  const printCircle = document.getElementById('print-circle');
+  if (printCircle) {
+    const qrShown = document.getElementById('qr-circle')?.classList.contains('show');
+    if (available && state.screen === 'result' && qrShown) printCircle.classList.add('show');
+    else if (!available) printCircle.classList.remove('show');
+  }
+}
+
+// Reset the print circle to its idle "ready to hold" state (printer icon, empty ring).
+function resetPrintCircleIdle() {
+  if (elements.printDoneIcon) {
+    elements.printDoneIcon.classList.remove('show');
+    elements.printDoneIcon.style.display = 'none';
+  }
+  if (elements.printIcon) {
+    elements.printIcon.style.display = 'flex';
+  }
+  if (elements.printProgress) {
+    const circumference = 440; // Match CSS stroke-dasharray value (r=70px)
+    elements.printProgress.style.transition = 'none';
+    elements.printProgress.style.strokeDashoffset = circumference; // empty
+    void elements.printProgress.offsetWidth; // force reflow
+    elements.printProgress.style.transition = 'stroke-dashoffset 0.05s linear';
+  }
+}
+
+// Start the 2-second print hold (matches MockHardwareService.longPressThreshold).
+function startPrintHold() {
+  if (state.printHoldStart) return; // already holding
+
+  console.log('[RENDERER] Starting print hold...');
+
+  // Keep the auto-return countdown running (don't cancel it). If it expires mid-print,
+  // the timer logic waits for the print to finish before doing the glass wipe.
+
+  state.printHoldStart = Date.now();
+
+  const HOLD_DURATION = 2000; // 2s (must match MockHardwareService.longPressThreshold)
+  const circumference = 440;
+
+  // INSTANT FEEDBACK: start the ring from empty
+  elements.printProgress.style.transition = 'none';
+  elements.printProgress.style.strokeDashoffset = circumference;
+  void elements.printProgress.offsetWidth; // force reflow
+  elements.printProgress.style.transition = 'stroke-dashoffset 0.05s linear';
+
+  function updatePrintProgress() {
+    if (!state.printHoldStart) return; // cancelled
+
+    const elapsed = Date.now() - state.printHoldStart;
+    const progress = Math.min(1, elapsed / HOLD_DURATION);
+    elements.printProgress.style.strokeDashoffset = circumference * (1 - progress);
+
+    if (progress >= 1) {
+      completePrintHold();
+    } else {
+      state.printHoldInterval = requestAnimationFrame(updatePrintProgress);
+    }
+  }
+
+  requestAnimationFrame(updatePrintProgress);
+}
+
+// Cancel an in-progress print hold (button released before 2s).
+function cancelPrintHold() {
+  if (!state.printHoldStart) return;
+
+  console.log('[RENDERER] Cancelling print hold');
+  state.printHoldStart = null;
+
+  if (state.printHoldInterval) {
+    cancelAnimationFrame(state.printHoldInterval);
+    state.printHoldInterval = null;
+  }
+
+  // SNAP-BACK: quick transition back to empty
+  const circumference = 440;
+  elements.printProgress.style.transition = 'stroke-dashoffset 0.2s ease-out';
+  elements.printProgress.style.strokeDashoffset = circumference;
+  setTimeout(() => {
+    elements.printProgress.style.transition = 'stroke-dashoffset 0.05s linear';
+  }, 200);
+
+  // The auto-return countdown was never paused, so there's nothing to resume here.
+}
+
+// Hold completed - fire the print (which first asks the backend for permission).
+async function completePrintHold() {
+  console.log('[RENDERER] Print hold complete');
+
+  state.printHoldStart = null;
+  if (state.printHoldInterval) {
+    cancelAnimationFrame(state.printHoldInterval);
+    state.printHoldInterval = null;
+  }
+
+  await handlePrint();
+}
+
+async function handlePrint() {
+  console.log('[RENDERER] ===== PRINT REQUEST STARTED =====');
+  console.log('[RENDERER] Session ID:', state.currentSession?.id, 'prints remaining:', state.printsRemaining);
+
+  // Mutex guard - prevent duplicate print jobs
+  if (state.isPrinting) {
+    console.log('[RENDERER] Print already in progress, ignoring duplicate request');
+    return;
+  }
+  state.isPrinting = true;
+
+  try {
+    if (!state.currentSession) {
+      console.error('[RENDERER] ❌ No session to print');
+      updatePrinterStatus({ available: false, status: 'error', message: 'No session available' });
+      resetPrintCircleIdle();
+      state.isPrinting = false;
+      return;
+    }
+    if (!state.currentPrintBuffer) {
+      console.error('[RENDERER] ❌ No print buffer available');
+      updatePrinterStatus({ available: false, status: 'error', message: 'No image to print' });
+      resetPrintCircleIdle();
+      state.isPrinting = false;
+      return;
+    }
+
+    // Register the print with the backend FIRST. It writes the print_jobs row and
+    // enforces the per-photo max: logged === true → allowed, logged === false → max
+    // reached (don't print). A missing/old endpoint or network error returns no
+    // `logged` field → we fall back to allowing the print so it still works offline.
+    let logged = true;
+    try {
+      const res = await window.electronAPI.apiLogPrint(state.currentSession.id);
+      if (res && res.logged === false) logged = false;
+      console.log('[RENDERER] Print register result:', JSON.stringify(res));
+    } catch (logError) {
+      console.warn('[RENDERER] ⚠️ Print register call failed (allowing print):', logError);
+    }
+
+    if (!logged) {
+      console.log('[RENDERER] Max prints reached (server) — not printing');
+      state.printsRemaining = 0; // lock out further holds
+      resetPrintCircleIdle();
+      updatePrintContainerVisibility();
+      state.isPrinting = false;
+      return;
+    }
+
+    const printerStatus = await window.electronAPI.printerGetStatus();
+    if (!printerStatus.available) {
+      console.error('[RENDERER] ❌ Printer not available');
+      updatePrinterStatus(printerStatus);
+      resetPrintCircleIdle();
+      state.isPrinting = false;
+      return;
+    }
+
+    // Allowed → send the print. Keep the printer icon while it prints; we only show
+    // the checkmark *after* it succeeds (a checkmark mid-print would imply "done").
+    updatePrinterStatus({ available: true, status: 'printing', message: 'Printing...' });
+
+    const result = await window.electronAPI.printerPrint(state.currentPrintBuffer, {
+      printFormat: state.currentPrintFormat,
+      printOrientation: state.currentPrintOrientation
+    });
+    console.log('[RENDERER] Print IPC returned:', JSON.stringify(result));
+
+    if (result.success) {
+      console.log('[RENDERER] ✅ Print job completed successfully');
+      state.printsRemaining = Math.max(0, state.printsRemaining - 1);
+
+      // Brief "sent" checkmark as confirmation
+      if (elements.printIcon) elements.printIcon.style.display = 'none';
+      if (elements.printDoneIcon) {
+        elements.printDoneIcon.style.display = 'flex';
+        setTimeout(() => elements.printDoneIcon.classList.add('show'), 50);
+      }
+
+      // Refresh printer status after a moment
+      setTimeout(async () => {
+        const status = await window.electronAPI.printerGetStatus();
+        updatePrinterStatus(status);
+      }, 2000);
+
+      state.isPrinting = false;
+
+      if (state.printsRemaining > 0) {
+        // More prints allowed → after a short confirmation, snap back to the printer
+        // icon so it's clear the guest can still print again
+        console.log('[RENDERER] Prints remaining:', state.printsRemaining, '- back to printer icon for another print');
+        setTimeout(() => {
+          if (state.screen === 'result') resetPrintCircleIdle();
+        }, 900);
+      }
+      // else: no prints left — leave the checkmark showing (done)
+      // The countdown kept running throughout — don't restart it. If it already
+      // expired during this print, the timer logic does the glass wipe now.
+    } else {
+      console.error('[RENDERER] ❌ Print job FAILED:', result.error);
+      updatePrinterStatus({ available: false, status: 'error', message: result.error || 'Print failed' });
+      resetPrintCircleIdle();
+      state.isPrinting = false;
+    }
+  } catch (error) {
+    console.error('[RENDERER] ❌ Print exception:', error);
+    updatePrinterStatus({ available: false, status: 'error', message: error.message });
+    resetPrintCircleIdle();
+    state.isPrinting = false;
+  }
 }
 
 
@@ -2513,9 +2857,13 @@ function updatePrinterStatus(status) {
   printerStatusEl.textContent = statusText;
   printerStatusEl.style.color = statusColor;
 
-  // Keep the QR action label in sync with the live printer status on the result screen
+  // Keep the QR action label + hold-to-print circle in sync with the live printer
+  // status on the result screen. Don't disturb the circle mid-print/mid-hold.
   if (state.screen === 'result') {
     updateResultActionLabel();
+    if (!state.isPrinting && !state.printHoldStart) {
+      updatePrintContainerVisibility();
+    }
   }
 }
 
@@ -2557,6 +2905,88 @@ function initLoadingLottie() {
   } catch (error) {
     console.error('[LOTTIE] Failed to initialize loading animation:', error);
   }
+}
+
+// Strip protocol / www / trailing slash so e.g. "https://www.url.com/" → "url.com".
+function formatDisplayUrl(url) {
+  return String(url || '')
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/+$/, '');
+}
+
+// Read the hub's own branding from config, if any. hub_branding may be null or an
+// object; we accept a few likely key names for the logo image and the URL so it
+// works regardless of exactly how the backend names them.
+function getHubBranding() {
+  const hb = state.kioskConfig && state.kioskConfig.hub_branding;
+  if (!hb || typeof hb !== 'object') return null;
+  const logo = hb.logo_url || hb.logo || hb.image_url || hb.image || hb.logo_image_url || null;
+  const url = hb.url || hb.website || hb.link || hb.site || null;
+  if (!logo && !url) return null;
+  return { logo, url };
+}
+
+// Decide what (if anything) goes in the top branding slot, based on config:
+//  - client white-label (branding_enabled === true) → show NOTHING (even if the
+//    hub has its own branding) — we don't advertise on a branded booking
+//  - else hub_branding set → the hub's static logo + their URL
+//  - else → the default Poem Booth animated logo + poembooth.com
+// Runs once, the first time the booth screen appears.
+let boothBrandInitialized = false;
+function setupBoothBrand() {
+  if (boothBrandInitialized) return;
+  if (!elements.boothBrand) return;
+  boothBrandInitialized = true;
+
+  const clientBranded = !!(state.kioskConfig && state.kioskConfig.branding_enabled);
+  if (clientBranded) {
+    // Client supplies their own branding → keep the top of the booth clean
+    state.showBoothBrand = false;
+    updateBoothBrandVisibility();
+    return;
+  }
+
+  const hub = getHubBranding();
+  if (hub) {
+    renderHubBrand(hub);
+  } else {
+    renderPoemBoothBrand();
+  }
+  state.showBoothBrand = true;
+  updateBoothBrandVisibility();
+}
+
+// Hub branding: a static logo image + the hub's URL (protocol stripped).
+function renderHubBrand(hub) {
+  const container = elements.boothBrandLogo;
+  if (container) {
+    container.innerHTML = '';
+    if (hub.logo) {
+      const img = document.createElement('img');
+      img.src = hub.logo;
+      img.alt = 'Logo';
+      img.className = 'booth-brand-img';
+      container.appendChild(img);
+    }
+  }
+  if (elements.boothBrandUrl) {
+    if (hub.url) {
+      elements.boothBrandUrl.textContent = formatDisplayUrl(hub.url);
+      elements.boothBrandUrl.style.display = '';
+    } else {
+      elements.boothBrandUrl.style.display = 'none';
+    }
+  }
+}
+
+// Default Poem Booth branding: animated logo + poembooth.com.
+function renderPoemBoothBrand() {
+  if (elements.boothBrandUrl) {
+    elements.boothBrandUrl.textContent = 'poembooth.com';
+    elements.boothBrandUrl.style.display = '';
+  }
+  playBoothBrandLogo();
 }
 
 // Animate the Poem Booth branding logo (first frames of the startup animation) once,
@@ -2603,8 +3033,9 @@ function showScreen(screenName) {
 
       screens[screenName].classList.add('active');
       state.screen = screenName;
+      if (screenName === 'booth') state.isCapturing = false;
       updateBoothBrandVisibility();
-      if (screenName === 'booth') { resetStyleCoverflow(); playBoothBrandLogo(); }
+      if (screenName === 'booth') { resetStyleCoverflow(); setupBoothBrand(); updateBoothBrandVisibility(); }
     }, 1000); // Match CSS transition duration
   } else {
     // Normal screen transition
@@ -2614,17 +3045,19 @@ function showScreen(screenName) {
 
     screens[screenName].classList.add('active');
     state.screen = screenName;
+    if (screenName === 'booth') state.isCapturing = false;
     updateBoothBrandVisibility();
 
     // Reset the style coverflow when returning to the booth (after a capture)
-    if (screenName === 'booth') { resetStyleCoverflow(); playBoothBrandLogo(); }
+    if (screenName === 'booth') { resetStyleCoverflow(); setupBoothBrand(); updateBoothBrandVisibility(); }
   }
 }
 
-// Branding (logo + URL) stays visible on the booth and while waiting for the result
+// Branding (logo + URL) only belongs on the idle booth/home screen — it disappears
+// as soon as the countdown/capture starts and stays gone through processing.
 function updateBoothBrandVisibility() {
   if (elements.boothBrand) {
-    const show = state.screen === 'booth' || state.screen === 'processing';
+    const show = state.screen === 'booth' && state.showBoothBrand && !state.isCapturing;
     elements.boothBrand.classList.toggle('show', show);
   }
 }
