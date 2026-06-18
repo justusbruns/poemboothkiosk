@@ -44,7 +44,13 @@ class PrinterSupplyService {
     if (!this.available()) return this.last;     // DLL not present
     this.reading = true;
 
-    const readerPath = path.join(__dirname, 'dnpSupplyReader.js');
+    // In a packaged app the script lives inside app.asar but is unpacked (asarUnpack);
+    // run the real on-disk file so the spawned node process and its native koffi require
+    // resolve without asar involvement.
+    let readerPath = path.join(__dirname, 'dnpSupplyReader.js');
+    if (readerPath.includes('app.asar') && !readerPath.includes('app.asar.unpacked')) {
+      readerPath = readerPath.replace('app.asar', 'app.asar.unpacked');
+    }
     const dllDir = this.resolveDllDir();
 
     return new Promise((resolve) => {

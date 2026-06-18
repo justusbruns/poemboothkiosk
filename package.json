@@ -80,6 +80,10 @@
       "assets/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "node_modules/koffi/**",
+      "src/services/dnpSupplyReader.js"
+    ],
     "extraResources": [
       {
         "from": "playwright-browsers",
