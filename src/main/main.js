@@ -361,7 +361,11 @@ async function initializePrinter() {
     // Set up status change callback to notify renderer
     printerService.onStatusChange((status) => {
       console.log('[MAIN] Printer status changed:', status);
-      mainWindow.webContents.send('printer:statusChange', status);
+      // Guard against a destroyed/closed window (avoids "Object has been destroyed").
+      if (mainWindow && !mainWindow.isDestroyed() &&
+          mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('printer:statusChange', status);
+      }
       // Also push the new status to the backend so the portal print button
       // reflects reality immediately (not just on the 60s heartbeat).
       if (printJobService) {

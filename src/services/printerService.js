@@ -7,6 +7,7 @@
 
 const { BrowserWindow } = require('electron');
 const sharp = require('sharp');
+const PrinterSupplyService = require('./printerSupplyService');
 
 // Paper size mapping: inch-based format to hundredths of inch (for System.Drawing.Printing)
 // ACTUAL DNP DP-QW410 driver paper sizes available:
@@ -32,110 +33,156 @@ const PAPER_SIZES = {
 
 class PrinterService {
   constructor() {
-    this.printerName = 'DP-QW410';
+    // printerName = the live Windows print queue, resolved by detect() (no longer a
+    // hardcoded name). currentSerial = the printer (by serial) we resolved it for.
+    this.printerName = null;
+    this.currentSerial = null;
     this.isAvailable = false;
     this.lastStatus = 'unknown';
     this.statusCallback = null;
+    this.supply = new PrinterSupplyService(); // cspstat reader: which DNP printer + health
   }
 
   /**
-   * Initialize printer service and detect printer
+   * Initialize printer service and detect the connected DNP printer.
    */
   async initialize() {
     console.log('[PRINTER] ===== INITIALIZING PRINTER SERVICE =====');
-    console.log('[PRINTER] Looking for printer with name:', this.printerName);
-
     try {
-      // Get list of available printers from Electron
-      console.log('[PRINTER] Enumerating available printers...');
-      const printers = await this.getAvailablePrinters();
-
-      console.log('[PRINTER] Found', printers.length, 'printer(s):');
-      printers.forEach((p, index) => {
-        console.log(`[PRINTER]   ${index + 1}. "${p.name}"`);
-        console.log(`[PRINTER]      - Status: ${p.status || 'unknown'}`);
-        console.log(`[PRINTER]      - Is Default: ${p.isDefault || false}`);
-        console.log(`[PRINTER]      - Description: ${p.description || 'N/A'}`);
-        console.log(`[PRINTER]      - Driver Name: ${p.displayName || 'N/A'}`);
-      });
-
-      // Find DNP printer (case-sensitive match)
-      console.log('[PRINTER] Searching for exact match:', this.printerName);
-      const dnpPrinter = printers.find(p => p.name === this.printerName);
-
-      if (dnpPrinter) {
-        console.log('[PRINTER] ✅ Printer driver found in system');
-        console.log('[PRINTER] Basic info:', {
-          name: dnpPrinter.name,
-          isDefault: dnpPrinter.isDefault
-        });
-
-        // Perform enhanced physical connection check via PowerShell
-        const connectionStatus = await this.checkPrinterPhysicalConnection();
-
-        if (connectionStatus.connected) {
-          // Printer is physically connected and ready
-          this.isAvailable = true;
-          this.lastStatus = 'ready';
-          console.log('[PRINTER] ✅ Printer is physically CONNECTED and ready');
-          if (connectionStatus.deviceName) {
-            console.log('[PRINTER] USB device:', connectionStatus.deviceName);
-          }
-        } else {
-          // Printer driver exists but device is not connected
-          this.isAvailable = false;
-          this.lastStatus = 'offline';
-          console.warn('[PRINTER] ⚠️ Printer driver exists but device NOT CONNECTED');
-          console.warn('[PRINTER] Reason:', connectionStatus.reason);
-
-          if (connectionStatus.reason === 'usb_not_detected') {
-            console.warn('[PRINTER] Printer queue shows online but USB device not found');
-          } else if (connectionStatus.reason === 'printer_offline') {
-            console.warn('[PRINTER] Printer status:', connectionStatus.printerStatus);
-            console.warn('[PRINTER] Work offline:', connectionStatus.workOffline);
-          }
-
-          console.warn('[PRINTER] Please check:');
-          console.warn('[PRINTER]   1. Printer is powered on');
-          console.warn('[PRINTER]   2. USB cable is securely connected');
-          console.warn('[PRINTER]   3. Printer shows as "Ready" in Windows settings');
-        }
-      } else {
-        this.isAvailable = false;
-        this.lastStatus = 'offline';
-        console.error('[PRINTER] ❌ Target printer NOT FOUND!');
-        console.error('[PRINTER] Expected printer name:', this.printerName);
-        console.error('[PRINTER] Available printer names:', printers.map(p => `"${p.name}"`).join(', '));
-        console.error('[PRINTER] IMPORTANT: Printer name must match EXACTLY (case-sensitive)');
-
-        // Check for similar names (case-insensitive)
-        const similarPrinters = printers.filter(p =>
-          p.name.toLowerCase().includes('qw410') ||
-          p.name.toLowerCase().includes('dnp')
-        );
-
-        if (similarPrinters.length > 0) {
-          console.warn('[PRINTER] ⚠️ Found similar printer(s) that might be a match:');
-          similarPrinters.forEach(p => {
-            console.warn(`[PRINTER]    - "${p.name}"`);
-          });
-          console.warn('[PRINTER] Please update printerName in printerService.js to match exactly');
-        }
-      }
-
-      // Notify status change
-      this.notifyStatusChange();
-
-      console.log('[PRINTER] Initialization complete. Available:', this.isAvailable);
+      await this.detect();
+      console.log('[PRINTER] Initialization complete. Available:', this.isAvailable, 'queue:', this.printerName);
       return this.isAvailable;
     } catch (error) {
       console.error('[PRINTER] ❌ Initialization error:', error);
-      console.error('[PRINTER] Error type:', error.name);
-      console.error('[PRINTER] Error message:', error.message);
       this.isAvailable = false;
       this.lastStatus = 'error';
       this.notifyStatusChange();
       return false;
+    }
+  }
+
+  /**
+   * Detect the connected DNP printer and the Windows queue to print to.
+   *
+   * Primary: cspstat (the DNP SDK) reports the physically-connected printer — its
+   * serial + health — independent of Windows queue names. We map that serial to the
+   * live Windows print queue via the USB device, so duplicate "(Copy)/(Kopie)" queues
+   * never cause us to pick a disconnected printer.
+   *
+   * Fallback (no cspstat / HFP not installed): pick a DNP-model queue whose USB device
+   * is present and that isn't marked offline.
+   *
+   * @param {object} [supplies] - a cspstat read already done by the caller (avoids a
+   *   second USB query on the status heartbeat). Omit to read here.
+   */
+  async detect(supplies) {
+    if (this.lastStatus === 'printing') return this.isAvailable; // never probe mid-print
+
+    if (supplies === undefined) {
+      supplies = this.supply.available() ? await this.supply.read() : null;
+    }
+
+    if (supplies && supplies.ok) {
+      // cspstat sees a connected DNP printer → resolve its live queue by serial.
+      if (supplies.serial && supplies.serial !== this.currentSerial) {
+        const q = await this.resolveQueueBySerial(supplies.serial);
+        if (q) {
+          this.printerName = q;
+          this.currentSerial = supplies.serial;
+        } else {
+          // A different printer is connected but its Windows queue isn't ready yet.
+          // Drop the old queue so we never print to a disconnected printer; the safety
+          // net below (present-USB-port match) or a retry will catch the new one.
+          this.printerName = null;
+        }
+        console.log(`[PRINTER] cspstat serial ${supplies.serial} → queue ${q || '(not ready yet)'}`);
+      }
+      if (!this.printerName) this.printerName = await this.findDnpQueue(); // present-port fallback
+      this.isAvailable = !supplies.error && !!this.printerName;
+      this.lastStatus = this.mapState(supplies.state);
+    } else {
+      // No cspstat available — fall back to Windows enumeration (model pattern + present USB).
+      const q = await this.findDnpQueue();
+      this.printerName = q;
+      this.currentSerial = null;
+      this.isAvailable = !!q;
+      this.lastStatus = q ? 'ready' : 'offline';
+      console.log(`[PRINTER] Windows fallback → queue ${q || '(none found)'}`);
+    }
+
+    this.notifyStatusChange();
+    return this.isAvailable;
+  }
+
+  /**
+   * Re-run detection from a cspstat read the caller already has (status heartbeat).
+   * Picks up a hot-swapped printer without a restart, with no extra USB query.
+   */
+  async refreshFromSupplies(supplies) {
+    return this.detect(supplies);
+  }
+
+  // Map a cspstat hardware state to the kiosk's coarse printer status.
+  mapState(state) {
+    if (state === 'printing') return 'printing';
+    if (state === 'idle' || state === 'standstill' || state === 'cooling' || state === 'busy') return 'ready';
+    return 'offline'; // paper_out, ribbon_out, paper_jam, cover_open, errors, offline, unknown
+  }
+
+  /**
+   * Map a printer serial (from cspstat) to its live Windows print queue:
+   * present USB printer device whose parent USB serial matches → its port → the queue.
+   * Returns the queue name, or null if it can't be resolved.
+   */
+  async resolveQueueBySerial(serial) {
+    const s = String(serial || '').replace(/[^A-Za-z0-9]/g, '');
+    if (!s) return null;
+    try {
+      const out = await this.runPowerShell(
+        `$serial = '${s}'\n` +
+        `$queues = Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue\n` +
+        `$found = $null\n` +
+        `foreach ($up in (Get-PnpDevice -PresentOnly -Class Printer -ErrorAction SilentlyContinue)) {\n` +
+        `  $pm = [regex]::Match($up.InstanceId, 'USB\\d+')\n` +
+        `  if (-not $pm.Success) { continue }\n` +
+        `  $port = $pm.Value\n` +
+        `  $parent = (Get-PnpDeviceProperty -InstanceId $up.InstanceId -KeyName 'DEVPKEY_Device_Parent' -ErrorAction SilentlyContinue).Data\n` +
+        `  if ($parent -and $parent -match [regex]::Escape($serial)) {\n` +
+        `    $q = $queues | Where-Object { $_.PortName -eq $port } | Select-Object -First 1\n` +
+        `    if ($q) { $found = $q.Name }\n` +
+        `  }\n` +
+        `}\n` +
+        `Write-Output $found`
+      );
+      const name = (out || '').trim();
+      return name || null;
+    } catch (e) {
+      console.error('[PRINTER] resolveQueueBySerial error:', e.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fallback: find a DNP-model Windows queue, preferring one whose USB device is
+   * present and that isn't marked offline. Returns the queue name, or null.
+   */
+  async findDnpQueue() {
+    try {
+      const out = await this.runPowerShell(
+        `$pats = 'QW410|DS-?RX1|DS-?40|DS-?80|DS-?620|DS-?820|DS80DX|DNP|Dai.?Nippon'\n` +
+        `$cands = @(Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue | Where-Object { $_.Name -match $pats -or $_.DriverName -match $pats })\n` +
+        `$ports = @()\n` +
+        `foreach ($d in (Get-PnpDevice -PresentOnly -Class Printer -ErrorAction SilentlyContinue)) { $m = [regex]::Match($d.InstanceId, 'USB\\d+'); if ($m.Success) { $ports += $m.Value } }\n` +
+        `$pick = $cands | Where-Object { $ports -contains $_.PortName -and -not $_.WorkOffline } | Select-Object -First 1\n` +
+        `if (-not $pick) { $pick = $cands | Where-Object { -not $_.WorkOffline } | Select-Object -First 1 }\n` +
+        `if (-not $pick) { $pick = $cands | Select-Object -First 1 }\n` +
+        `if ($pick) { Write-Output $pick.Name }`
+      );
+      const name = (out || '').trim();
+      return name || null;
+    } catch (e) {
+      console.error('[PRINTER] findDnpQueue error:', e.message);
+      return null;
     }
   }
 
@@ -288,6 +335,20 @@ class PrinterService {
   async print(imageBuffer, options = {}) {
     const printFormat = options.printFormat || '4x6';
     const printOrientation = options.printOrientation || 'portrait';
+
+    // Re-bind to the currently-connected printer right before printing, so a printer
+    // swapped mid-session is picked up immediately (not only on the 60s heartbeat).
+    // After a physical swap the OS needs a few seconds to enumerate the new printer and
+    // create its queue, so retry briefly — a quick reprint then waits for the new printer
+    // instead of going to the old (disconnected) one.
+    try {
+      await this.detect();
+      for (let tries = 0; !this.isAvailable && tries < 4; tries++) {
+        console.log('[PRINTER] printer not ready yet — waiting for it to settle...');
+        await new Promise(r => setTimeout(r, 1500));
+        await this.detect();
+      }
+    } catch (e) { console.warn('[PRINTER] pre-print detect failed:', e.message); }
 
     console.log('[PRINTER] ===== PRINT JOB STARTING =====');
     console.log('[PRINTER] Image buffer size:', imageBuffer.length, 'bytes');
@@ -577,7 +638,7 @@ class PrinterService {
     return {
       available: this.isAvailable,
       status: this.lastStatus,
-      printerName: this.printerName
+      printerName: this.printerName || 'Unknown'
     };
   }
 
@@ -592,11 +653,18 @@ class PrinterService {
    * Notify status change to callback
    */
   notifyStatusChange() {
+    // De-dupe: only fire the callback when something actually changed. detect() runs on
+    // every status heartbeat, and the callback re-triggers a status report — without this
+    // guard that would be a feedback loop.
+    const snap = `${this.isAvailable}|${this.lastStatus}|${this.printerName}`;
+    if (snap === this._lastSnap) return;
+    this._lastSnap = snap;
+
     if (this.statusCallback) {
       this.statusCallback({
         available: this.isAvailable,
         status: this.lastStatus,
-        printerName: this.printerName
+        printerName: this.printerName || 'Unknown'
       });
     }
   }

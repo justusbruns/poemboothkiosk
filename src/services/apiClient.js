@@ -360,14 +360,28 @@ class ApiClient {
     }
   }
 
-  // Report printer connectivity/status so the portal can show/hide its print button
-  // Backend: POST /api/kiosk/printer-status { connected, status }
-  async reportPrinterStatus(connected, status) {
+  // Report printer connectivity/status so the portal can show/hide its print button,
+  // plus optional DNP supply levels (sheets remaining, capacity, media, serial, ...) for
+  // the dashboard. Backend: POST /api/kiosk/printer-status { connected, status, ...supplies }
+  async reportPrinterStatus(connected, status, supplies = null) {
     try {
-      return await this.request('POST', '/api/kiosk/printer-status', {
+      const body = {
         connected: !!connected,
         status: status || 'unknown'
-      });
+      };
+      // Only include supply fields when we have a fresh, valid reading.
+      if (supplies && supplies.ok) {
+        body.sheets_remaining = supplies.sheets_remaining;
+        body.media_capacity = supplies.media_capacity;
+        body.media = supplies.media;
+        body.serial = supplies.serial;
+        body.firmware = supplies.firmware;
+        body.lifetime_prints = supplies.lifetime_prints;
+        body.printer_status_raw = supplies.status_raw;
+        body.printer_state = supplies.state;   // readable hardware state (idle, paper_jam, ribbon_out, ...)
+        body.printer_error = supplies.error;   // true when it needs attention
+      }
+      return await this.request('POST', '/api/kiosk/printer-status', body);
     } catch (error) {
       console.error('[API] reportPrinterStatus error:', error.message);
       return { success: false };

@@ -9,7 +9,12 @@
  *
  * The kiosk is the only party with the printer, so all printing happens here.
  * Guests trigger a job from their phone; this service picks it up and prints.
+ *
+ * It also reads DNP supply levels (sheets remaining etc.) on the idle heartbeat and
+ * piggybacks them on the printer-status report for the dashboard.
  */
+const PrinterSupplyService = require('./printerSupplyService');
+
 class PrintJobService {
   /**
    * @param {object} deps
@@ -24,6 +29,7 @@ class PrintJobService {
     this.pollTimer = null;
     this.polling = false;
     this.processing = new Set(); // job ids currently in flight (avoid double-print)
+    this.supply = new PrinterSupplyService(); // DNP media/supply reader (idle-only)
 
     // How often to report printer status and poll for jobs
     this.STATUS_INTERVAL_MS = 60 * 1000; // 60s heartbeat (portal freshness check ~3min)
@@ -58,8 +64,24 @@ class PrintJobService {
   }
 
   async reportStatus() {
-    const { connected, status } = await this.currentStatus();
-    await this.apiClient.reportPrinterStatus(connected, status);
+    let { connected, status } = await this.currentStatus();
+
+    // Read DNP supply levels only when the printer is connected AND idle ('ready').
+    // DNP warns against status queries mid-print, so we never read while 'printing'.
+    let supplies = null;
+    if (connected && status === 'ready') {
+      try { supplies = await this.supply.read(); } catch (e) { console.warn('[PRINTJOB] supply read failed:', e.message); }
+
+      // Hand the read to the printer service so it can pick up a hot-swapped printer
+      // (re-resolve the live Windows queue by serial) without an extra USB query.
+      const ps = this.getPrinterService && this.getPrinterService();
+      if (ps && supplies && typeof ps.refreshFromSupplies === 'function') {
+        try { await ps.refreshFromSupplies(supplies); ({ connected, status } = await this.currentStatus()); }
+        catch (e) { console.warn('[PRINTJOB] printer refresh failed:', e.message); }
+      }
+    }
+
+    await this.apiClient.reportPrinterStatus(connected, status, supplies);
   }
 
   // Called from the printer's onStatusChange callback for an immediate update
