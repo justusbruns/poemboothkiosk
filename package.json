@@ -82,6 +82,7 @@
     ],
     "asarUnpack": [
       "node_modules/koffi/**",
+      "node_modules/@koromix/**",
       "src/services/dnpSupplyReader.js"
     ],
     "extraResources": [

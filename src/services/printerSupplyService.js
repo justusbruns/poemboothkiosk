@@ -75,6 +75,10 @@ class PrinterSupplyService {
         finish(this.last);
       }, timeoutMs);
 
+      // On a transient failure (couldn't run/parse the reader) we keep the last good
+      // value to avoid flicker. But a definitive "no printer" answer from the reader must
+      // NOT be masked by the cache — otherwise the kiosk/portal keep showing a printer
+      // that's actually unplugged.
       child.stdout.on('data', (d) => { out += d.toString(); });
       child.on('error', (e) => { clearTimeout(timer); console.error('[SUPPLY] reader error:', e.message); finish(this.last); });
       child.on('exit', (code) => {
@@ -87,11 +91,17 @@ class PrinterSupplyService {
             console.log(`[SUPPLY] sheets_remaining=${j.sheets_remaining}/${j.media_capacity} media=${j.media} serial=${j.serial}`);
             return finish(j);
           }
-          console.warn('[SUPPLY] reader returned no data:', (j && j.error) || 'unknown', '(exit', code + ')');
+          if (j && j.ok === false) {
+            // Reader ran and reported no printer (or a hard error) → authoritative.
+            this.last = null;
+            console.log('[SUPPLY] no printer connected:', j.error || 'unknown');
+            return finish(j); // {ok:false, ...}
+          }
+          console.warn('[SUPPLY] could not interpret reader output (exit', code + ')');
         } catch (e) {
           console.warn('[SUPPLY] could not parse reader output:', (out || '').slice(0, 160));
         }
-        finish(this.last);
+        finish(this.last); // transient: keep last
       });
     });
   }

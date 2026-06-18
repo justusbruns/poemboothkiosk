@@ -100,8 +100,17 @@ class PrinterService {
       if (!this.printerName) this.printerName = await this.findDnpQueue(); // present-port fallback
       this.isAvailable = !supplies.error && !!this.printerName;
       this.lastStatus = this.mapState(supplies.state);
+    } else if (supplies) {
+      // cspstat IS available but reports no printer connected → report disconnected.
+      // (Don't keep a stale queue, so the kiosk/portal stop showing a printer.)
+      this.printerName = null;
+      this.currentSerial = null;
+      this.isAvailable = false;
+      this.lastStatus = 'offline';
+      console.log('[PRINTER] cspstat reports no printer connected → offline');
     } else {
-      // No cspstat available — fall back to Windows enumeration (model pattern + present USB).
+      // No cspstat available (DLL not installed) — fall back to Windows enumeration
+      // (model pattern + present USB device). Returns null if nothing is connected.
       const q = await this.findDnpQueue();
       this.printerName = q;
       this.currentSerial = null;
@@ -163,8 +172,9 @@ class PrinterService {
   }
 
   /**
-   * Fallback: find a DNP-model Windows queue, preferring one whose USB device is
-   * present and that isn't marked offline. Returns the queue name, or null.
+   * Fallback (only used when cspstat/HFP isn't installed): find a DNP-model Windows
+   * queue whose USB device is actually PRESENT. Returns null if nothing is connected,
+   * so we never show a phantom printer for a stale/offline queue.
    */
   async findDnpQueue() {
     try {
@@ -173,9 +183,9 @@ class PrinterService {
         `$cands = @(Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue | Where-Object { $_.Name -match $pats -or $_.DriverName -match $pats })\n` +
         `$ports = @()\n` +
         `foreach ($d in (Get-PnpDevice -PresentOnly -Class Printer -ErrorAction SilentlyContinue)) { $m = [regex]::Match($d.InstanceId, 'USB\\d+'); if ($m.Success) { $ports += $m.Value } }\n` +
+        `# Only a queue whose USB device is present counts as connected.\n` +
         `$pick = $cands | Where-Object { $ports -contains $_.PortName -and -not $_.WorkOffline } | Select-Object -First 1\n` +
-        `if (-not $pick) { $pick = $cands | Where-Object { -not $_.WorkOffline } | Select-Object -First 1 }\n` +
-        `if (-not $pick) { $pick = $cands | Select-Object -First 1 }\n` +
+        `if (-not $pick) { $pick = $cands | Where-Object { $ports -contains $_.PortName } | Select-Object -First 1 }\n` +
         `if ($pick) { Write-Output $pick.Name }`
       );
       const name = (out || '').trim();

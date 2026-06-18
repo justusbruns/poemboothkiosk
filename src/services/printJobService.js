@@ -66,14 +66,15 @@ class PrintJobService {
   async reportStatus() {
     let { connected, status } = await this.currentStatus();
 
-    // Read DNP supply levels only when the printer is connected AND idle ('ready').
-    // DNP warns against status queries mid-print, so we never read while 'printing'.
+    // Read DNP supplies whenever we're NOT actively printing (DNP warns against status
+    // queries mid-print). Reading while idle/offline lets us detect a printer being
+    // unplugged or (re)connected and converge in the background — not only on a print.
     let supplies = null;
-    if (connected && status === 'ready') {
+    if (status !== 'printing') {
       try { supplies = await this.supply.read(); } catch (e) { console.warn('[PRINTJOB] supply read failed:', e.message); }
 
-      // Hand the read to the printer service so it can pick up a hot-swapped printer
-      // (re-resolve the live Windows queue by serial) without an extra USB query.
+      // Hand the read to the printer service so it re-detects: picks up a hot-swapped
+      // printer (re-resolve the queue by serial) or marks offline when none is connected.
       const ps = this.getPrinterService && this.getPrinterService();
       if (ps && supplies && typeof ps.refreshFromSupplies === 'function') {
         try { await ps.refreshFromSupplies(supplies); ({ connected, status } = await this.currentStatus()); }
