@@ -31,8 +31,11 @@ class PrintJobService {
     this.processing = new Set(); // job ids currently in flight (avoid double-print)
     this.supply = new PrinterSupplyService(); // DNP media/supply reader (idle-only)
 
-    // How often to report printer status and poll for jobs
-    this.STATUS_INTERVAL_MS = 60 * 1000; // 60s heartbeat (portal freshness check ~3min)
+    // How often to report printer status and poll for jobs.
+    // 25s also acts as a USB "keepalive": each status read talks to the printer over
+    // USB, which keeps Windows USB selective-suspend from powering the port down after
+    // idle (a common cause of "the printer disappears after a while").
+    this.STATUS_INTERVAL_MS = 25 * 1000;
     this.POLL_INTERVAL_MS = 5 * 1000;    // 5s — snappy enough for a guest waiting at the booth
   }
 

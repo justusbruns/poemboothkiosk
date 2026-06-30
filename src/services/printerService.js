@@ -41,6 +41,7 @@ class PrinterService {
     this.lastStatus = 'unknown';
     this.statusCallback = null;
     this.supply = new PrinterSupplyService(); // cspstat reader: which DNP printer + health
+    this._wasAvailable = false;               // for "printer went missing" diagnostics
   }
 
   /**
@@ -119,8 +120,36 @@ class PrinterService {
       console.log(`[PRINTER] Windows fallback → queue ${q || '(none found)'}`);
     }
 
+    // When the printer JUST went missing, capture the USB/queue state so the cause of
+    // the next disappearance is in the log (USB drop vs printer asleep vs driver fault).
+    if (this._wasAvailable && !this.isAvailable) {
+      this.logUsbDiagnostics().catch(() => {});
+    }
+    this._wasAvailable = this.isAvailable;
+
     this.notifyStatusChange();
     return this.isAvailable;
+  }
+
+  /**
+   * Log the current USB device + printer-queue state. Called when the printer goes
+   * missing so the next occurrence reveals WHY:
+   *  - device Present=false  → USB/port dropped (e.g. selective suspend, cable)
+   *  - device Present=true but cspstat saw no printer → printer asleep / not responding
+   *  - error Status          → driver/USB fault
+   */
+  async logUsbDiagnostics() {
+    try {
+      const out = await this.runPowerShell(
+        `Write-Output 'USB DNP devices:'\n` +
+        `Get-PnpDevice -ErrorAction SilentlyContinue | Where-Object { $_.InstanceId -match 'VID_1452|QW410|Dai.?Nippon|DNP' } | ForEach-Object { '  Present=' + $_.Present + ' Status=' + $_.Status + ' Class=' + $_.Class + ' Id=' + $_.InstanceId }\n` +
+        `Write-Output 'Printer queues:'\n` +
+        `Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue | Where-Object { $_.Name -match 'QW410|DNP' } | ForEach-Object { '  Name=' + $_.Name + ' Port=' + $_.PortName + ' Offline=' + $_.WorkOffline + ' Status=' + $_.PrinterStatus }`
+      );
+      console.log('[PRINTER][DIAG] printer went missing — USB/queue state:\n' + (out || '').trim());
+    } catch (e) {
+      console.warn('[PRINTER][DIAG] diagnostics failed:', e.message);
+    }
   }
 
   /**
