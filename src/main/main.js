@@ -139,6 +139,7 @@ async function createWindow() {
     fullscreen: !IS_DEV,
     kiosk: !IS_DEV,
     frame: IS_DEV,
+    skipTaskbar: !IS_DEV,
     autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,  // Changed to false for security
@@ -211,14 +212,27 @@ async function createWindow() {
       // Ensure window is on top and truly fullscreen on startup
       mainWindow.setAlwaysOnTop(true, 'screen-saver');
       mainWindow.setFullScreen(true);
-      // Release always-on-top after a delay so it doesn't block OS dialogs permanently
+      // Keep the kiosk above the taskbar and stray windows. (Previously this downgraded to
+      // 'floating' after 2s, which sits BELOW the taskbar and let it/other windows surface.)
       setTimeout(() => {
         if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.setAlwaysOnTop(true, 'floating');
+          mainWindow.setAlwaysOnTop(true, 'screen-saver');
         }
       }, 2000);
     }
   });
+
+  // Kiosk watchdog: if anything ever steals the foreground (a driver status popup, a stray
+  // console), snap the app back to fullscreen + on top. Our own PowerShell calls now run
+  // hidden (windowsHide + -WindowStyle Hidden), so blur should be rare in production.
+  if (!IS_DEV) {
+    mainWindow.on('blur', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) return;
+      mainWindow.setAlwaysOnTop(true, 'screen-saver');
+      if (!mainWindow.isFullScreen()) mainWindow.setFullScreen(true);
+      mainWindow.focus();
+    });
+  }
 }
 
 // Initialize hardware (GPIO or mock for dev)
