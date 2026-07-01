@@ -31,6 +31,12 @@ const PAPER_SIZES = {
   '6x2': { width: 422, height: 612, name: '(4x6)', rotate: true, strip: true },
 };
 
+// How many consecutive heartbeats must report "no printer" AND find no present DNP USB
+// device before we declare the printer offline. Guards against transient cspstat comms
+// failures (mid-print / dye-sub cooling) that briefly return "no printer" while the
+// device is still on the USB bus — those must NOT hide the hold-to-print button.
+const OFFLINE_CONFIRM_READS = 2;
+
 class PrinterService {
   constructor() {
     // printerName = the live Windows print queue, resolved by detect() (no longer a
@@ -42,6 +48,7 @@ class PrinterService {
     this.statusCallback = null;
     this.supply = new PrinterSupplyService(); // cspstat reader: which DNP printer + health
     this._wasAvailable = false;               // for "printer went missing" diagnostics
+    this._offlineMisses = 0;                  // consecutive corroborated "no printer" reads
   }
 
   /**
@@ -101,14 +108,38 @@ class PrinterService {
       if (!this.printerName) this.printerName = await this.findDnpQueue(); // present-port fallback
       this.isAvailable = !supplies.error && !!this.printerName;
       this.lastStatus = this.mapState(supplies.state);
+      if (this.isAvailable) this._offlineMisses = 0; // healthy read clears the miss streak
     } else if (supplies) {
-      // cspstat IS available but reports no printer connected → report disconnected.
-      // (Don't keep a stale queue, so the kiosk/portal stop showing a printer.)
-      this.printerName = null;
-      this.currentSerial = null;
-      this.isAvailable = false;
-      this.lastStatus = 'offline';
-      console.log('[PRINTER] cspstat reports no printer connected → offline');
+      // cspstat ran but reports no printer. This is authoritative ONLY if the printer is
+      // really gone. Under USB contention (mid-print / dye-sub cooling) the DNP status tool
+      // transiently returns "no printer" while the device is still on the bus — the logs
+      // show exactly this (a `reader timed out` → `no_printer`, yet the [DIAG] dump has the
+      // device Present=True). Treating that as offline hid the hold-to-print button.
+      //
+      // So corroborate with the OS: if a DNP-model queue whose USB device is PRESENT still
+      // exists, this is a transient comms failure — stay online. Only flip to offline after
+      // OFFLINE_CONFIRM_READS consecutive misses with no present USB device (debounce), so a
+      // single bad read never hides the button. A genuine unplug (USB device gone) still
+      // goes offline within ~OFFLINE_CONFIRM_READS heartbeats.
+      const presentQueue = await this.findDnpQueue();
+      if (presentQueue) {
+        this.printerName = presentQueue;
+        this.isAvailable = true;
+        this.lastStatus = 'ready';
+        this._offlineMisses = 0;
+        console.log(`[PRINTER] cspstat saw no printer, but USB queue "${presentQueue}" is present → transient comms failure, staying online`);
+      } else {
+        this._offlineMisses += 1;
+        if (this._offlineMisses >= OFFLINE_CONFIRM_READS) {
+          this.printerName = null;
+          this.currentSerial = null;
+          this.isAvailable = false;
+          this.lastStatus = 'offline';
+          console.log(`[PRINTER] cspstat reports no printer + no present USB device (${this._offlineMisses} consecutive) → offline`);
+        } else {
+          console.log(`[PRINTER] cspstat reports no printer, no present USB device — miss ${this._offlineMisses}/${OFFLINE_CONFIRM_READS}, holding previous state (available=${this.isAvailable})`);
+        }
+      }
     } else {
       // No cspstat available (DLL not installed) — fall back to Windows enumeration
       // (model pattern + present USB device). Returns null if nothing is connected.
@@ -117,6 +148,7 @@ class PrinterService {
       this.currentSerial = null;
       this.isAvailable = !!q;
       this.lastStatus = q ? 'ready' : 'offline';
+      if (this.isAvailable) this._offlineMisses = 0;
       console.log(`[PRINTER] Windows fallback → queue ${q || '(none found)'}`);
     }
 
