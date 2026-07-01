@@ -110,34 +110,46 @@ class PrinterService {
       this.lastStatus = this.mapState(supplies.state);
       if (this.isAvailable) this._offlineMisses = 0; // healthy read clears the miss streak
     } else if (supplies) {
-      // cspstat ran but reports no printer. This is authoritative ONLY if the printer is
-      // really gone. Under USB contention (mid-print / dye-sub cooling) the DNP status tool
-      // transiently returns "no printer" while the device is still on the bus — the logs
-      // show exactly this (a `reader timed out` → `no_printer`, yet the [DIAG] dump has the
-      // device Present=True). Treating that as offline hid the hold-to-print button.
+      // cspstat ran but reports no printer. Under USB contention (mid-print / dye-sub
+      // cooling) the DNP status tool transiently returns "no printer" while the device is
+      // still on the bus — the logs show exactly this (a `reader timed out` → `no_printer`,
+      // yet the [DIAG] dump has the device Present=True). Treating that as offline hid the
+      // hold-to-print button.
       //
-      // So corroborate with the OS: if a DNP-model queue whose USB device is PRESENT still
-      // exists, this is a transient comms failure — stay online. Only flip to offline after
-      // OFFLINE_CONFIRM_READS consecutive misses with no present USB device (debounce), so a
-      // single bad read never hides the button. A genuine unplug (USB device gone) still
-      // goes offline within ~OFFLINE_CONFIRM_READS heartbeats.
-      const presentQueue = await this.findDnpQueue();
-      if (presentQueue) {
-        this.printerName = presentQueue;
+      // So make the decision presence-authoritative via the OS. probeDnpPresence()
+      // distinguishes three cases so we never show a phantom button AND never hide a
+      // present one on a transient cspstat glitch:
+      //   present USB queue → transient cspstat comms failure → stay online
+      //   confirmed absent  → really unplugged → offline NOW (no phantom button)
+      //   probe failed      → unknown → debounce (hold previous state up to N reads)
+      const probe = await this.probeDnpPresence();
+      if (probe.queue) {
+        this.printerName = probe.queue;
         this.isAvailable = true;
         this.lastStatus = 'ready';
         this._offlineMisses = 0;
-        console.log(`[PRINTER] cspstat saw no printer, but USB queue "${presentQueue}" is present → transient comms failure, staying online`);
+        console.log(`[PRINTER] cspstat saw no printer, but USB queue "${probe.queue}" is present → transient comms failure, staying online`);
+      } else if (probe.queried) {
+        // OS confirms no present DNP USB device → genuinely disconnected. Go offline
+        // immediately so the button is never shown while unplugged.
+        this.printerName = null;
+        this.currentSerial = null;
+        this.isAvailable = false;
+        this.lastStatus = 'offline';
+        this._offlineMisses = 0;
+        console.log('[PRINTER] cspstat + OS both report no printer present → offline');
       } else {
+        // The USB presence query itself failed — ambiguous. Debounce: hold the previous
+        // state for a few reads rather than flip on a double query failure.
         this._offlineMisses += 1;
         if (this._offlineMisses >= OFFLINE_CONFIRM_READS) {
           this.printerName = null;
           this.currentSerial = null;
           this.isAvailable = false;
           this.lastStatus = 'offline';
-          console.log(`[PRINTER] cspstat reports no printer + no present USB device (${this._offlineMisses} consecutive) → offline`);
+          console.log(`[PRINTER] cspstat no printer + USB probe failed ${this._offlineMisses}x → offline`);
         } else {
-          console.log(`[PRINTER] cspstat reports no printer, no present USB device — miss ${this._offlineMisses}/${OFFLINE_CONFIRM_READS}, holding previous state (available=${this.isAvailable})`);
+          console.log(`[PRINTER] cspstat no printer + USB probe failed — miss ${this._offlineMisses}/${OFFLINE_CONFIRM_READS}, holding previous state (available=${this.isAvailable})`);
         }
       }
     } else {
@@ -258,6 +270,37 @@ class PrinterService {
   }
 
   /**
+   * Like findDnpQueue(), but distinguishes "queried successfully, no present printer"
+   * from "the query itself failed". Lets detect() flip offline immediately when the USB
+   * device is CONFIRMED absent (no phantom button), while only debouncing when the
+   * PnP/WMI query couldn't run. Returns one of:
+   *   { queue: '<name>', queried: true } → a present DNP USB queue exists (printer there)
+   *   { queue: null,     queried: true } → query ran, no present DNP device (really absent)
+   *   { queue: null,     queried: false} → query failed (unknown — caller should debounce)
+   */
+  async probeDnpPresence() {
+    try {
+      const out = await this.runPowerShell(
+        `$pats = 'QW410|DS-?RX1|DS-?40|DS-?80|DS-?620|DS-?820|DS80DX|DNP|Dai.?Nippon'\n` +
+        `$cands = @(Get-CimInstance Win32_Printer -ErrorAction SilentlyContinue | Where-Object { $_.Name -match $pats -or $_.DriverName -match $pats })\n` +
+        `$ports = @()\n` +
+        `foreach ($d in (Get-PnpDevice -PresentOnly -Class Printer -ErrorAction SilentlyContinue)) { $m = [regex]::Match($d.InstanceId, 'USB\\d+'); if ($m.Success) { $ports += $m.Value } }\n` +
+        `$pick = $cands | Where-Object { $ports -contains $_.PortName -and -not $_.WorkOffline } | Select-Object -First 1\n` +
+        `if (-not $pick) { $pick = $cands | Where-Object { $ports -contains $_.PortName } | Select-Object -First 1 }\n` +
+        `if ($pick) { Write-Output $pick.Name }\n` +
+        `Write-Output '__PROBE_DONE__'`
+      );
+      const lines = (out || '').split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      if (!lines.includes('__PROBE_DONE__')) return { queue: null, queried: false };
+      const name = lines.find(l => l !== '__PROBE_DONE__') || null;
+      return { queue: name, queried: true };
+    } catch (e) {
+      console.error('[PRINTER] probeDnpPresence error:', e.message);
+      return { queue: null, queried: false };
+    }
+  }
+
+  /**
    * Check if printer is physically connected using PowerShell
    * Performs two-tier verification:
    * 1. Check printer queue status (Get-Printer)
@@ -277,9 +320,11 @@ class PrinterService {
 
     // Encode the script as UTF-16LE base64 for PowerShell's -EncodedCommand
     const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    // -WindowStyle Hidden + windowsHide:true prevent a PowerShell console window from
+    // flashing in front of the fullscreen kiosk on every status/detect call (25s heartbeat).
     const { stdout } = await execAsync(
-      `powershell -NoProfile -EncodedCommand ${encoded}`,
-      { timeout: 10000 }
+      `powershell -NoProfile -WindowStyle Hidden -EncodedCommand ${encoded}`,
+      { timeout: 10000, windowsHide: true }
     );
     return stdout;
   }
@@ -618,13 +663,13 @@ class PrinterService {
       fs.writeFileSync(psScriptPath, psScript, 'utf8');
       console.log('[PRINTER] PowerShell script saved to:', psScriptPath);
 
-      const printCommand = `powershell -NoProfile -ExecutionPolicy Bypass -File "${psScriptPath}"`;
+      const printCommand = `powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${psScriptPath}"`;
 
       console.log('[PRINTER] Executing PowerShell script file');
       console.log('[PRINTER] This will list all available paper sizes from DNP');
 
       try {
-        const { stdout, stderr } = await execAsync(printCommand, { timeout: 30000 });
+        const { stdout, stderr } = await execAsync(printCommand, { timeout: 30000, windowsHide: true });
         console.log('[PRINTER] PowerShell stdout:', stdout);
         if (stderr) console.log('[PRINTER] PowerShell stderr:', stderr);
         console.log('[PRINTER] ✅ Print command executed successfully');
