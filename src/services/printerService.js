@@ -37,6 +37,73 @@ const PAPER_SIZES = {
 // device is still on the USB bus — those must NOT hide the hold-to-print button.
 const OFFLINE_CONFIRM_READS = 2;
 
+// Persistent PowerShell print worker. Spawning a fresh powershell.exe per print costs
+// 20-30s+ on the kiosk NUCs (cold start + Add-Type System.Drawing JIT + DNP driver
+// paper-size enumeration) — long enough that real prints hit the old 30s exec timeout
+// and were killed mid-spool ("Print job failed" with nothing printed). This worker is
+// spawned once (warmed during boot), keeps System.Drawing loaded, and prints each
+// request it receives as a JSON line on stdin, answering with a sentinel line.
+const PRINT_WORKER_PS1 = `
+$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Drawing
+[Console]::Out.WriteLine('__WORKER_READY__')
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($null -eq $line) { break }
+  if (-not $line.Trim()) { continue }
+  $script:img = $null
+  try {
+    $req = $line | ConvertFrom-Json
+    $script:img = [System.Drawing.Image]::FromFile($req.imagePath)
+    if ($req.rotate) { $script:img.RotateFlip([System.Drawing.RotateFlipType]::Rotate90FlipNone) }
+    $pd = New-Object System.Drawing.Printing.PrintDocument
+    $pd.PrinterSettings.PrinterName = $req.printer
+    $bestMatch = $null
+    $bestDiff = [int]::MaxValue
+    foreach ($size in $pd.PrinterSettings.PaperSizes) {
+      $diff = [Math]::Abs($size.Width - $req.paperWidth) + [Math]::Abs($size.Height - $req.paperHeight)
+      if ($diff -lt $bestDiff) { $bestDiff = $diff; $bestMatch = $size }
+    }
+    if ($bestMatch -and $bestDiff -lt 50) {
+      $pd.DefaultPageSettings.PaperSize = $bestMatch
+      [Console]::Out.WriteLine('# matched paper ' + $bestMatch.PaperName + ' (' + $bestMatch.Width + 'x' + $bestMatch.Height + ') diff=' + $bestDiff)
+    } else {
+      [Console]::Out.WriteLine('# no close paper match (best diff=' + $bestDiff + ') - using printer default')
+    }
+    $pd.DefaultPageSettings.Landscape = [bool]$req.landscape
+    $pd.DefaultPageSettings.Margins = New-Object System.Drawing.Printing.Margins(0,0,0,0)
+    $pd.add_PrintPage({
+      param($sender, $ev)
+      $bounds = $ev.MarginBounds
+      $targetRatio = $bounds.Width / $bounds.Height
+      $sourceRatio = $script:img.Width / $script:img.Height
+      if ($sourceRatio -gt $targetRatio) {
+        $newWidth = [int]($script:img.Height * $targetRatio)
+        $cropX = [int](($script:img.Width - $newWidth) / 2)
+        $srcRect = New-Object System.Drawing.Rectangle($cropX, 0, $newWidth, $script:img.Height)
+      } else {
+        $newHeight = [int]($script:img.Width / $targetRatio)
+        $cropY = [int](($script:img.Height - $newHeight) / 2)
+        $srcRect = New-Object System.Drawing.Rectangle(0, $cropY, $script:img.Width, $newHeight)
+      }
+      $destRect = New-Object System.Drawing.Rectangle(0, 0, $bounds.Width, $bounds.Height)
+      $ev.Graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+      $ev.Graphics.DrawImage($script:img, $destRect, $srcRect, [System.Drawing.GraphicsUnit]::Pixel)
+      $ev.HasMorePages = $false
+    })
+    $pd.Print()
+    $pd.Dispose()
+    [Console]::Out.WriteLine('__PRINT_OK__')
+  } catch {
+    [Console]::Out.WriteLine('__PRINT_ERR__ ' + ($_.ToString() -replace '[\\r\\n]+', ' '))
+  } finally {
+    if ($script:img) { $script:img.Dispose(); $script:img = $null }
+  }
+}
+`;
+
 class PrinterService {
   constructor() {
     // printerName = the live Windows print queue, resolved by detect() (no longer a
@@ -49,6 +116,10 @@ class PrinterService {
     this.supply = new PrinterSupplyService(); // cspstat reader: which DNP printer + health
     this._wasAvailable = false;               // for "printer went missing" diagnostics
     this._offlineMisses = 0;                  // consecutive corroborated "no printer" reads
+    this._lastDetectAt = 0;                   // when detect() last ran fully (skip pre-print re-detect when fresh)
+    this.printWorker = null;                  // persistent PowerShell print worker (see PRINT_WORKER_PS1)
+    this._workerStarting = null;              // in-flight worker spawn promise
+    this._printQueue = Promise.resolve();     // serializes prints through the single worker
   }
 
   /**
@@ -58,6 +129,9 @@ class PrinterService {
     console.log('[PRINTER] ===== INITIALIZING PRINTER SERVICE =====');
     try {
       await this.detect();
+      // Warm the persistent print worker during boot so the first guest print doesn't
+      // pay PowerShell cold-start (measured 20-30s on kiosk NUCs).
+      this.ensurePrintWorker().catch(e => console.warn('[PRINTER] print worker warm-up failed:', e.message));
       console.log('[PRINTER] Initialization complete. Available:', this.isAvailable, 'queue:', this.printerName);
       return this.isAvailable;
     } catch (error) {
@@ -170,6 +244,7 @@ class PrinterService {
       this.logUsbDiagnostics().catch(() => {});
     }
     this._wasAvailable = this.isAvailable;
+    this._lastDetectAt = Date.now();
 
     this.notifyStatusChange();
     return this.isAvailable;
@@ -329,6 +404,128 @@ class PrinterService {
     return stdout;
   }
 
+  /**
+   * Ensure the persistent print worker is running and READY. Reuses the live worker,
+   * joins an in-flight spawn, or starts a new one. Resolves to the worker handle.
+   */
+  ensurePrintWorker() {
+    if (this.printWorker && this.printWorker.ready) return Promise.resolve(this.printWorker);
+    if (this._workerStarting) return this._workerStarting;
+    this._workerStarting = this.spawnPrintWorker();
+    this._workerStarting.finally(() => { this._workerStarting = null; }).catch(() => {});
+    return this._workerStarting;
+  }
+
+  /**
+   * Spawn the persistent PowerShell print worker and wait for its READY handshake.
+   * The worker script is (re)written to temp on every spawn; it contains no guest data.
+   */
+  spawnPrintWorker() {
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+    const { spawn } = require('child_process');
+
+    return new Promise((resolve, reject) => {
+      const workerPath = path.join(os.tmpdir(), 'poembooth-print-worker.ps1');
+      try {
+        fs.writeFileSync(workerPath, PRINT_WORKER_PS1, 'utf8');
+      } catch (e) {
+        return reject(new Error('cannot write print worker script: ' + e.message));
+      }
+
+      console.log('[PRINTER] Spawning persistent print worker...');
+      let child;
+      try {
+        child = spawn('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', workerPath], { windowsHide: true });
+      } catch (e) {
+        return reject(new Error('cannot spawn print worker: ' + e.message));
+      }
+
+      const worker = { child, ready: false, pending: null, buf: '' };
+      // Cold start can be very slow on kiosk NUCs (Defender + module prep) — be generous.
+      const readyTimer = setTimeout(() => {
+        try { child.kill(); } catch (_) {}
+        reject(new Error('print worker did not become ready within 60s'));
+      }, 60000);
+
+      const onLine = (line) => {
+        if (line === '__WORKER_READY__') {
+          worker.ready = true;
+          this.printWorker = worker;
+          clearTimeout(readyTimer);
+          console.log('[PRINTER] ✅ Print worker ready (System.Drawing pre-loaded)');
+          resolve(worker);
+        } else if (line.startsWith('__PRINT_OK__') || line.startsWith('__PRINT_ERR__')) {
+          if (worker.pending) worker.pending(line);
+        } else if (line) {
+          console.log('[PRINTER][WORKER]', line);
+        }
+      };
+
+      child.stdout.on('data', (d) => {
+        worker.buf += d.toString();
+        let idx;
+        while ((idx = worker.buf.indexOf('\n')) !== -1) {
+          const line = worker.buf.slice(0, idx).replace(/\r$/, '').trim();
+          worker.buf = worker.buf.slice(idx + 1);
+          onLine(line);
+        }
+      });
+      child.stderr.on('data', (d) => {
+        const t = d.toString().trim();
+        if (t) console.warn('[PRINTER][WORKER][stderr]', t.slice(0, 500));
+      });
+      child.on('error', (err) => {
+        clearTimeout(readyTimer);
+        if (this.printWorker === worker) this.printWorker = null;
+        if (worker.pending) worker.pending('__PRINT_ERR__ worker process error: ' + err.message);
+        if (!worker.ready) reject(err);
+      });
+      child.on('exit', (code) => {
+        clearTimeout(readyTimer);
+        if (this.printWorker === worker) this.printWorker = null;
+        if (worker.pending) worker.pending('__PRINT_ERR__ worker exited (code ' + code + ')');
+        if (!worker.ready) reject(new Error('print worker exited before ready (code ' + code + ')'));
+        else console.warn('[PRINTER] Print worker exited (code ' + code + ') — will respawn on next print');
+      });
+    });
+  }
+
+  /**
+   * Print one request through the persistent worker. Serialized (one print at a time),
+   * with a hard timeout as safety net. Throws on failure so the caller can fall back.
+   */
+  printViaWorker(request, timeoutMs = 90000) {
+    const run = async () => {
+      const worker = await this.ensurePrintWorker();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          worker.pending = null;
+          // A stuck worker can't be trusted for the next job — kill it; it respawns lazily.
+          try { worker.child.kill(); } catch (_) {}
+          reject(new Error(`print worker timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+        worker.pending = (line) => {
+          clearTimeout(timer);
+          worker.pending = null;
+          if (line.startsWith('__PRINT_OK__')) resolve(true);
+          else reject(new Error(line.replace('__PRINT_ERR__', '').trim() || 'print failed'));
+        };
+        worker.child.stdin.write(JSON.stringify(request) + '\n', (err) => {
+          if (err) {
+            clearTimeout(timer);
+            worker.pending = null;
+            reject(err);
+          }
+        });
+      });
+    };
+    const p = this._printQueue.then(run, run);
+    this._printQueue = p.catch(() => {});
+    return p;
+  }
+
   async checkPrinterPhysicalConnection() {
     try {
       console.log('[PRINTER] Checking physical connection via PowerShell...');
@@ -453,18 +650,25 @@ class PrinterService {
     const printOrientation = options.printOrientation || 'portrait';
 
     // Re-bind to the currently-connected printer right before printing, so a printer
-    // swapped mid-session is picked up immediately (not only on the 60s heartbeat).
+    // swapped mid-session is picked up immediately (not only on the heartbeat).
     // After a physical swap the OS needs a few seconds to enumerate the new printer and
     // create its queue, so retry briefly — a quick reprint then waits for the new printer
     // instead of going to the old (disconnected) one.
-    try {
-      await this.detect();
-      for (let tries = 0; !this.isAvailable && tries < 4; tries++) {
-        console.log('[PRINTER] printer not ready yet — waiting for it to settle...');
-        await new Promise(r => setTimeout(r, 1500));
+    //
+    // But only pay for this when needed: detect() costs a cspstat read + PowerShell
+    // round-trips (~7s measured), and the 25s status heartbeat already keeps the state
+    // fresh. When we have a usable printer and a recent detect, print immediately.
+    const detectAge = Date.now() - this._lastDetectAt;
+    if (!this.isAvailable || !this.printerName || detectAge > 60000) {
+      try {
         await this.detect();
-      }
-    } catch (e) { console.warn('[PRINTER] pre-print detect failed:', e.message); }
+        for (let tries = 0; !this.isAvailable && tries < 4; tries++) {
+          console.log('[PRINTER] printer not ready yet — waiting for it to settle...');
+          await new Promise(r => setTimeout(r, 1500));
+          await this.detect();
+        }
+      } catch (e) { console.warn('[PRINTER] pre-print detect failed:', e.message); }
+    }
 
     console.log('[PRINTER] ===== PRINT JOB STARTING =====');
     console.log('[PRINTER] Image buffer size:', imageBuffer.length, 'bytes');
@@ -658,37 +862,61 @@ class PrinterService {
   exit 1
 }`;
 
-      // Save PowerShell script to temp file
-      const psScriptPath = path.join(tempDir, `poembooth-print-${Date.now()}.ps1`);
-      fs.writeFileSync(psScriptPath, psScript, 'utf8');
-      console.log('[PRINTER] PowerShell script saved to:', psScriptPath);
-
-      const printCommand = `powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${psScriptPath}"`;
-
-      console.log('[PRINTER] Executing PowerShell script file');
-      console.log('[PRINTER] This will list all available paper sizes from DNP');
-
+      // Fast path: persistent worker (System.Drawing already loaded). A fresh
+      // powershell.exe per print took 20-30s+ on this hardware and hit the old 30s
+      // kill timeout, failing real prints mid-spool.
+      let printed = false;
       try {
-        const { stdout, stderr } = await execAsync(printCommand, { timeout: 30000, windowsHide: true });
-        console.log('[PRINTER] PowerShell stdout:', stdout);
-        if (stderr) console.log('[PRINTER] PowerShell stderr:', stderr);
-        console.log('[PRINTER] ✅ Print command executed successfully');
+        console.log('[PRINTER] Printing via persistent worker...');
+        await this.printViaWorker({
+          imagePath: tempFilePath,
+          printer: this.printerName,
+          paperWidth: targetWidth,
+          paperHeight: targetHeight,
+          landscape: isLandscape,
+          rotate: needsRotation,
+        }, 90000);
+        printed = true;
+        console.log('[PRINTER] ✅ Print command executed successfully (worker)');
+      } catch (workerError) {
+        console.warn('[PRINTER] Worker print failed:', workerError.message, '— falling back to one-shot PowerShell');
+      }
 
-        // SECURITY: Delete temp files IMMEDIATELY after print (guest data)
+      if (!printed) {
+        // Fallback: one-shot script file (slow, but independent of the worker).
+        const psScriptPath = path.join(tempDir, `poembooth-print-${Date.now()}.ps1`);
         try {
-          fs.unlinkSync(psScriptPath);
-          console.log('[PRINTER] ✓ PowerShell script deleted');
-        } catch (e) {
-          console.warn('[PRINTER] Failed to delete PS script:', e.message);
+          fs.writeFileSync(psScriptPath, psScript, 'utf8');
+          console.log('[PRINTER] PowerShell script saved to:', psScriptPath);
+          const printCommand = `powershell -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File "${psScriptPath}"`;
+          console.log('[PRINTER] Executing PowerShell script file');
+          const { stdout, stderr } = await execAsync(printCommand, { timeout: 90000, windowsHide: true });
+          console.log('[PRINTER] PowerShell stdout:', stdout);
+          if (stderr) console.log('[PRINTER] PowerShell stderr:', stderr);
+          printed = true;
+          console.log('[PRINTER] ✅ Print command executed successfully');
+        } catch (cmdError) {
+          console.error('[PRINTER] ❌ Print command failed:', cmdError.message);
+        } finally {
+          // SECURITY: the script contains no guest data, but clean it up regardless
+          try {
+            if (fs.existsSync(psScriptPath)) fs.unlinkSync(psScriptPath);
+            console.log('[PRINTER] ✓ PowerShell script deleted');
+          } catch (e) {
+            console.warn('[PRINTER] Failed to delete PS script:', e.message);
+          }
         }
+      }
 
-        try {
-          fs.unlinkSync(tempFilePath);
-          console.log('[PRINTER] ✓ Temp image deleted immediately');
-        } catch (cleanupError) {
-          console.warn('[PRINTER] Failed to delete temp file:', cleanupError.message);
-        }
+      // SECURITY: Delete the temp image IMMEDIATELY, success or not (guest data)
+      try {
+        fs.unlinkSync(tempFilePath);
+        console.log('[PRINTER] ✓ Temp image deleted immediately');
+      } catch (cleanupError) {
+        console.warn('[PRINTER] Failed to delete temp file:', cleanupError.message);
+      }
 
+      if (printed) {
         // Reset status after print completes
         console.log('[PRINTER] Scheduling status reset to "ready" in 20 seconds...');
         setTimeout(() => {
@@ -696,25 +924,12 @@ class PrinterService {
           this.notifyStatusChange();
           console.log('[PRINTER] Status reset to "ready"');
         }, 20000);
-
         return true;
-
-      } catch (cmdError) {
-        console.error('[PRINTER] ❌ Print command failed:', cmdError.message);
-
-        // SECURITY: Clean up temp files immediately even on error
-        try {
-          if (fs.existsSync(psScriptPath)) fs.unlinkSync(psScriptPath);
-          if (fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath);
-          console.log('[PRINTER] ✓ Temp files deleted after error');
-        } catch (cleanupError) {
-          console.warn('[PRINTER] Cleanup error:', cleanupError.message);
-        }
-
-        this.lastStatus = 'error';
-        this.notifyStatusChange();
-        return false;
       }
+
+      this.lastStatus = 'error';
+      this.notifyStatusChange();
+      return false;
 
     } catch (error) {
       console.error('[PRINTER] ❌ Print exception:', error);
@@ -847,6 +1062,10 @@ class PrinterService {
   destroy() {
     console.log('[PRINTER] Cleaning up printer service...');
     this.statusCallback = null;
+    if (this.printWorker) {
+      try { this.printWorker.child.kill(); } catch (_) {}
+      this.printWorker = null;
+    }
   }
 }
 
