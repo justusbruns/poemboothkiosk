@@ -22,6 +22,18 @@ class PrinterSupplyService {
     this.last = null;        // last successful supplies object
     this.lastReadAt = 0;
     this.reading = false;
+    this.child = null;       // in-flight reader process (abortable)
+  }
+
+  /**
+   * Abort an in-flight read (kills the reader child; the pending read() resolves with
+   * the last cached value). Called when a print starts: cspstat and the print job
+   * contend for the printer's USB channel, stalling both.
+   */
+  abort() {
+    if (this.child) {
+      try { this.child.kill(); } catch (_) {}
+    }
   }
 
   // Where cspstat-x64.dll lives: prefer a bundled copy, else the HFP install.
@@ -56,7 +68,13 @@ class PrinterSupplyService {
     return new Promise((resolve) => {
       let out = '';
       let settled = false;
-      const finish = (val) => { if (settled) return; settled = true; this.reading = false; resolve(val); };
+      const finish = (val) => {
+        if (settled) return;
+        settled = true;
+        this.reading = false;
+        if (this.child === child) this.child = null;
+        resolve(val);
+      };
 
       let child;
       try {
@@ -68,6 +86,7 @@ class PrinterSupplyService {
         console.error('[SUPPLY] spawn failed:', e.message);
         return finish(this.last);
       }
+      this.child = child;
 
       const timer = setTimeout(() => {
         try { child.kill(); } catch (_) {}

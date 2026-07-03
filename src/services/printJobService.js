@@ -70,10 +70,18 @@ class PrintJobService {
     let { connected, status } = await this.currentStatus();
 
     // Read DNP supplies whenever we're NOT actively printing (DNP warns against status
-    // queries mid-print). Reading while idle/offline lets us detect a printer being
-    // unplugged or (re)connected and converge in the background — not only on a print.
+    // queries mid-print — cspstat and the print job contend for the printer's USB
+    // channel and stall each other). isPrinting() covers the print from its first ms,
+    // not only once the status flips to "printing" (that happens after the print's
+    // preparation work, leaving a race window the heartbeat used to slip through).
+    const printer = this.getPrinterService && this.getPrinterService();
+    const printing = status === 'printing' ||
+      (printer && typeof printer.isPrinting === 'function' && printer.isPrinting());
     let supplies = null;
-    if (status !== 'printing') {
+    if (printing) {
+      // Kill an in-flight read too — one may have started just before the print did.
+      try { this.supply.abort(); } catch (_) {}
+    } else {
       try { supplies = await this.supply.read(); } catch (e) { console.warn('[PRINTJOB] supply read failed:', e.message); }
 
       // Hand the read to the printer service so it re-detects: picks up a hot-swapped

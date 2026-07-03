@@ -117,6 +117,7 @@ class PrinterService {
     this._wasAvailable = false;               // for "printer went missing" diagnostics
     this._offlineMisses = 0;                  // consecutive corroborated "no printer" reads
     this._lastDetectAt = 0;                   // when detect() last ran fully (skip pre-print re-detect when fresh)
+    this._printInFlight = false;              // true from the very first ms of print() — gates cspstat reads
     this.printWorker = null;                  // persistent PowerShell print worker (see PRINT_WORKER_PS1)
     this._workerStarting = null;              // in-flight worker spawn promise
     this._printQueue = Promise.resolve();     // serializes prints through the single worker
@@ -646,6 +647,25 @@ class PrinterService {
    * @returns {Promise<boolean>} - Success status
    */
   async print(imageBuffer, options = {}) {
+    this._printInFlight = true;
+    // Stop any in-flight cspstat read NOW: the DNP status tool and the print job
+    // contend for the printer's USB channel — a concurrent read stalls the print
+    // (observed: paper-size enumeration taking 19s and the reader timing out).
+    try { this.supply.abort(); } catch (_) {}
+    try {
+      return await this.doPrint(imageBuffer, options);
+    } finally {
+      this._printInFlight = false;
+    }
+  }
+
+  /** True while a print() call is executing (from its first ms, not only once the
+   *  status flips to "printing"). Used to gate cspstat/supply reads. */
+  isPrinting() {
+    return this._printInFlight || this.lastStatus === 'printing';
+  }
+
+  async doPrint(imageBuffer, options = {}) {
     const printFormat = options.printFormat || '4x6';
     const printOrientation = options.printOrientation || 'portrait';
 
