@@ -2556,7 +2556,12 @@ async function getWipeMaskData() {
       if (shape.ty === 'st' && shape.c) shape.c.k = [0, 0, 0, 1];
       (shape.it || []).forEach(recolor);
     };
-    (data.layers || []).forEach((layer) => (layer.shapes || []).forEach(recolor));
+    (data.layers || []).forEach((layer) => {
+      (layer.shapes || []).forEach(recolor);
+      // Drop layer effects (gaussian blur): an SVG blur filter at full screen
+      // resolution is too heavy for kiosk hardware. Hard stroke edge instead.
+      delete layer.ef;
+    });
     wipeMaskData = data;
   }
   return wipeMaskData;
