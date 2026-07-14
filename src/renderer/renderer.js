@@ -2543,8 +2543,9 @@ function returnToBoothFromResult() {
 }
 
 // Glass wipe animation - return to booth screen
-// Wipe-out transition: 108 frames @ 24fps = 4.5s native; played at WIPE_SPEED (~3s)
-const WIPE_SPEED = 1.5;
+// Wipe-out transition: 108 frames @ 24fps = 4.5s native; played at WIPE_SPEED.
+// 0.75 → ~6s: slow enough to really feel like someone wiping the screen clean.
+const WIPE_SPEED = 0.75;
 let wipeMaskData = null;
 
 // Load the wiping animation and recolor its stroke to black: inside a luminance
