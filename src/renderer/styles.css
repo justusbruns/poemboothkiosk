@@ -1021,6 +1021,16 @@ h1, h2, h3, h4, h5, h6, p {
   transition: stroke-dashoffset 0.05s linear;
 }
 
+/* Wipe-out transition: result screen stays on top while the wiping Lottie
+   (inside #wipe-mask) erases it, revealing the live booth screen underneath */
+#result-screen.wiping {
+  display: flex;
+  opacity: 1;
+  z-index: 200;
+  transition: none;
+  mask: url(#wipe-mask);
+}
+
 /* Glass wipe animation */
 .glass-wipe {
   position: absolute;

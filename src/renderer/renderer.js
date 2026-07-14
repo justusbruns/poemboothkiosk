@@ -1601,6 +1601,13 @@ async function handleCapture() {
     console.log('[RENDERER] Already processing, ignoring capture request');
     return;
   }
+
+  // The booth screen is already active during the wipe-out transition; don't
+  // start a capture until the previous result is fully erased.
+  if (state.glassWiping) {
+    console.log('[RENDERER] Wipe transition in progress, ignoring capture request');
+    return;
+  }
   state.isProcessing = true;
 
   try {
@@ -2536,48 +2543,124 @@ function returnToBoothFromResult() {
 }
 
 // Glass wipe animation - return to booth screen
-function triggerGlassWipe() {
+// Wipe-out transition: 108 frames @ 24fps = 4.5s native; played at WIPE_SPEED (~3s)
+const WIPE_SPEED = 1.5;
+let wipeMaskData = null;
+
+// Load the wiping animation and recolor its stroke to black: inside a luminance
+// mask, black is what erases the result screen (the source file uses white).
+async function getWipeMaskData() {
+  if (!wipeMaskData) {
+    const data = await loadJsonXHR('./assets/wiping.json');
+    const recolor = (shape) => {
+      if (shape.ty === 'st' && shape.c) shape.c.k = [0, 0, 0, 1];
+      (shape.it || []).forEach(recolor);
+    };
+    (data.layers || []).forEach((layer) => (layer.shapes || []).forEach(recolor));
+    wipeMaskData = data;
+  }
+  return wipeMaskData;
+}
+
+// Reset the result screen for the next session (runs after the wipe finishes)
+function finishResultCleanup() {
+  // Hide QR circle
+  const qrCircle = document.getElementById('qr-circle');
+  if (qrCircle) {
+    qrCircle.classList.remove('show');
+  }
+
+  // Reset the print circle (icons + progress ring) for the next session
+  const printCircle = document.getElementById('print-circle');
+  if (printCircle) printCircle.classList.remove('show');
+  resetPrintCircleIdle();
+
+  // Reset result photo for next session (may have been hidden for image generation)
+  if (elements.resultPhoto) {
+    elements.resultPhoto.style.display = '';
+  }
+  // Detach the live camera background until the next generated-image result
+  hideResultCameraBackground();
+
+  // Reset state
+  state.currentPhoto = null;
+  state.currentSession = null;
+  state.isProcessing = false;
+  state.glassWiping = false;
+}
+
+// Fallback transition when the wiping Lottie can't run: the original glass wipe
+function triggerGlassWipeFallback() {
+  elements.glassWipe.style.display = 'block';
+
+  setTimeout(() => {
+    elements.glassWipe.style.display = 'none';
+    finishResultCleanup();
+    showScreen('booth');
+  }, 800);
+}
+
+async function triggerGlassWipe() {
   if (state.glassWiping) return; // already returning to booth - don't double-fire
   state.glassWiping = true;
 
   // Cancel any in-progress typing animation
   cancelTypingAnimation();
 
-  console.log('[RENDERER] Triggering glass wipe animation...');
+  console.log('[RENDERER] Triggering wipe-out transition...');
 
-  // Show glass wipe overlay
-  elements.glassWipe.style.display = 'block';
+  let animData = null;
+  try { animData = await getWipeMaskData(); }
+  catch (e) { console.error('[RENDERER] Could not load wiping animation:', e); }
 
-  // Wait for animation to complete (800ms)
-  setTimeout(() => {
-    elements.glassWipe.style.display = 'none';
+  const maskTarget = document.getElementById('wipe-mask-anim');
+  if (!maskTarget || typeof lottie === 'undefined' || !animData) {
+    triggerGlassWipeFallback();
+    return;
+  }
 
-    // Hide QR circle
-    const qrCircle = document.getElementById('qr-circle');
-    if (qrCircle) {
-      qrCircle.classList.remove('show');
+  // Show the booth screen (live camera) underneath, while the result screen stays
+  // on top with the animated wipe mask erasing it.
+  screens.result.classList.add('wiping');
+  showScreen('booth');
+
+  maskTarget.innerHTML = '';
+  const anim = lottie.loadAnimation({
+    container: maskTarget,
+    renderer: 'svg',
+    loop: false,
+    autoplay: true,
+    animationData: animData,
+    rendererSettings: { preserveAspectRatio: 'xMidYMid slice' }
+  });
+  anim.setSpeed(WIPE_SPEED);
+
+  // Lottie sets width/height="100%" on its <svg>, which inside the mask resolves
+  // against the 0x0 host <svg> instead of the masked screen — give it the real
+  // viewport size so the animation covers the result screen.
+  const sizeLottieSvg = () => {
+    const svg = maskTarget.querySelector('svg');
+    if (svg) {
+      svg.setAttribute('width', String(window.innerWidth));
+      svg.setAttribute('height', String(window.innerHeight));
     }
+  };
+  sizeLottieSvg();
+  anim.addEventListener('DOMLoaded', sizeLottieSvg);
 
-    // Reset the print circle (icons + progress ring) for the next session
-    const printCircle = document.getElementById('print-circle');
-    if (printCircle) printCircle.classList.remove('show');
-    resetPrintCircleIdle();
+  let finished = false;
+  const finishWipe = () => {
+    if (finished) return;
+    finished = true;
+    screens.result.classList.remove('wiping');
+    try { anim.destroy(); } catch (e) { /* already destroyed */ }
+    maskTarget.innerHTML = '';
+    finishResultCleanup();
+  };
 
-    // Reset result photo for next session (may have been hidden for image generation)
-    if (elements.resultPhoto) {
-      elements.resultPhoto.style.display = '';
-    }
-    // Detach the live camera background until the next generated-image result
-    hideResultCameraBackground();
-
-    // Reset state and return to booth screen
-    state.currentPhoto = null;
-    state.currentSession = null;
-    state.isProcessing = false;
-    state.glassWiping = false;
-
-    showScreen('booth');
-  }, 800);
+  anim.addEventListener('complete', finishWipe);
+  // Safety net: if 'complete' never fires, force-finish after the expected duration
+  setTimeout(finishWipe, (4500 / WIPE_SPEED) + 2000);
 }
 
 // Whether this result is in "hold-to-print" mode at all: free mode (paid prints go

@@ -222,6 +222,21 @@
     <button id="quit-app">Quit App</button>
   </div>
 
+  <!-- Wipe-out mask: the wiping Lottie renders inside this SVG <mask>. The result screen
+       gets `mask: url(#wipe-mask)` so the (black) stroke erases it, revealing the booth
+       screen underneath. White rect = still visible, animated black stroke = erased. -->
+  <svg width="0" height="0" style="position: absolute;" aria-hidden="true">
+    <defs>
+      <!-- NOTE: absolute units, not % — percentages here resolve against this 0x0
+           host <svg>, not the masked element, and would collapse the mask to nothing.
+           8192 comfortably covers any kiosk viewport. -->
+      <mask id="wipe-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="8192" height="8192">
+        <rect x="0" y="0" width="8192" height="8192" fill="white" />
+        <g id="wipe-mask-anim"></g>
+      </mask>
+    </defs>
+  </svg>
+
   <script type="module" src="renderer.js"></script>
 </body>
 </html>
