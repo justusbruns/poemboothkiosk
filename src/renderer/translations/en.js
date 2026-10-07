@@ -11,7 +11,25 @@ export const en = {
   },
   wifi: {
     setupRequired: 'Please connect me to the internet',
-    holdQRCode: 'Hold your WiFi QR code in front of the camera'
+    holdQRCode: 'Hold your WiFi QR code in front of the camera',
+    waiting: 'Waiting for your WiFi QR code...',
+    detected: 'QR code detected! Connecting...',
+    connected: 'Connected! Continuing setup...',
+    stillOffline: 'Still no internet — hold your WiFi QR code in front of the camera',
+    failed: 'Connection failed'
+  },
+  setup: {
+    chooseLanguage: 'Choose your language',
+    languageHint: '← Turn the knob to choose, press to confirm →',
+    pairingTitle: 'Connect this booth',
+    pairingIntro: 'Scan the QR code with your phone, log in to your Poem Booth account and confirm the code below.',
+    pairingRequesting: 'Requesting code…',
+    pairingWaiting: 'Waiting for approval on your phone…',
+    pairingExpired: 'Code expired — getting a new one…',
+    pairingNoConnection: 'No connection — retrying…',
+    pairingHiccup: 'Connection hiccup — still waiting…',
+    pairingError: 'Pairing error: {error}. Retrying…',
+    pairingConnected: 'Connected as {name} — starting…'
   },
   booth: {
     pressForPoetry: 'Press for Poetry',

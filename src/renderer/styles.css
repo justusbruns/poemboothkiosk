@@ -160,6 +160,32 @@ h1, h2, h3, h4, h5, h6, p {
   opacity: 0.4;
 }
 
+/* Setup Language Screen (reuses the update-screen option styling) */
+#language-screen {
+  background: #000000;
+}
+
+.language-icon {
+  margin-bottom: 1.5rem;
+  opacity: 0.9;
+}
+
+.language-content h1 {
+  font-size: 2.6rem;
+  margin-bottom: 2.5rem;
+}
+
+.language-option {
+  min-width: 260px;
+  cursor: pointer;
+}
+
+.option-flag {
+  font-size: 3rem;
+  line-height: 1;
+  margin-bottom: 0.75rem;
+}
+
 /* Update Screen */
 #update-screen {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

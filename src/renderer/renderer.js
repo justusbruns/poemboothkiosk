@@ -50,6 +50,7 @@ const screens = {
   loading: document.getElementById('loading-screen'),
   update: document.getElementById('update-screen'),
   wifi: document.getElementById('wifi-screen'),
+  language: document.getElementById('language-screen'),
   pairing: document.getElementById('pairing-screen'),
   booth: document.getElementById('booth-screen'),
   processing: document.getElementById('processing-screen'),
@@ -65,6 +66,11 @@ const elements = {
   loadingStatus: document.getElementById('loading-status'),
   wifiStatus: document.getElementById('wifi-status'),
   wifiVideo: document.getElementById('wifi-scanner-video'),
+  languageTitle: document.getElementById('language-title'),
+  languageHint: document.getElementById('language-hint'),
+  languageOptions: Array.from(document.querySelectorAll('#language-screen .language-option')),
+  pairingTitle: document.getElementById('pairing-title'),
+  pairingIntro: document.getElementById('pairing-intro'),
   pairingQr: document.getElementById('pairing-qr'),
   pairingCode: document.getElementById('pairing-code'),
   pairingUrl: document.getElementById('pairing-url'),
@@ -733,10 +739,29 @@ async function initializeApp() {
       throw new Error(`API initialization failed: ${initResult.error}`);
     }
 
-    updateStatus('loading', 'Checking network connection...');
+    // Local check (no network): does this booth already have credentials?
+    const authStatus = await window.electronAPI.apiGetAuthStatus();
+    console.log('[RENDERER] Auth status:', authStatus.mode, authStatus.paired ? `(equipment ${authStatus.equipment_id})` : '');
+    const forcePair = flags.forcePair && !state.pairingForcedOnce;
+    const needsSetup = !authStatus.paired || forcePair;
 
-    // Check connectivity FIRST: an unpaired booth still needs WiFi before it
-    // can show a pairing code.
+    // First-boot setup, step 1: language (NL/EN) for the setup screens.
+    // Paired booths take their language from the backend config instead.
+    if (needsSetup) {
+      let setupLanguage = await window.electronAPI.setupGetLanguage();
+      if (!setupLanguage) {
+        setupLanguage = await showLanguageScreen();
+        await window.electronAPI.setupSetLanguage(setupLanguage);
+        showScreen('loading');
+      }
+      loadTranslations(setupLanguage);
+      applySetupText();
+    }
+
+    updateStatus('loading', t('loading.checkingNetwork'));
+
+    // Step 2: connectivity. An unpaired booth still needs WiFi before it can
+    // show a pairing code; a paired booth needs it to fetch its config.
     const connResult = await window.electronAPI.apiCheckConnectivity();
     if (!connResult.isOnline) {
       // Show WiFi setup screen
@@ -745,12 +770,9 @@ async function initializeApp() {
       return;
     }
 
-    // Not paired yet (no stored credentials, no certificate)? Show the
+    // Step 3: not paired yet (no stored credentials, no certificate)? Show the
     // Smart-TV style pairing screen and come back here once approved.
-    const authStatus = await window.electronAPI.apiGetAuthStatus();
-    console.log('[RENDERER] Auth status:', authStatus.mode, authStatus.paired ? `(equipment ${authStatus.equipment_id})` : '');
-    const forcePair = flags.forcePair && !state.pairingForcedOnce;
-    if (!authStatus.paired || forcePair) {
+    if (needsSetup) {
       state.pairingForcedOnce = true;
       showScreen('pairing');
       await startPairingFlow();
@@ -883,7 +905,7 @@ async function initializeApp() {
         await initializeWiFiSetup();
       } else {
         // Already on the WiFi screen (e.g. retry after connecting) — keep scanning
-        elements.wifiStatus.textContent = 'Still no internet — hold your WiFi QR code in front of the camera';
+        elements.wifiStatus.textContent = t('wifi.stillOffline');
         scanForWiFiQR();
       }
       return;
@@ -902,6 +924,79 @@ async function initializeApp() {
 // logged in on their phone and linked this booth to their hub. The secret
 // device_code lives in the main process; the renderer only ever sees the
 // user-facing code.
+
+// Apply the active language to the setup screens (language / WiFi / pairing)
+function applySetupText() {
+  if (elements.languageTitle) elements.languageTitle.textContent = t('setup.chooseLanguage');
+  if (elements.languageHint) elements.languageHint.textContent = t('setup.languageHint');
+  const wifiTitle = document.querySelector('#wifi-screen h1');
+  const wifiInstruction = document.querySelector('#wifi-screen p');
+  if (wifiTitle) wifiTitle.textContent = t('wifi.setupRequired');
+  if (wifiInstruction) wifiInstruction.textContent = t('wifi.holdQRCode');
+  if (elements.pairingTitle) elements.pairingTitle.textContent = t('setup.pairingTitle');
+  if (elements.pairingIntro) elements.pairingIntro.textContent = t('setup.pairingIntro');
+}
+
+// Tiny placeholder helper for setup strings: "{name}" → value
+function fill(template, values) {
+  return String(template).replace(/\{(\w+)\}/g, (m, k) => (values && values[k] != null ? values[k] : m));
+}
+
+// First-boot language picker. Knob (or arrow keys) toggles, button (or
+// Enter/Space, or a click in dev) confirms. Resolves with 'nl' | 'en'.
+function showLanguageScreen() {
+  return new Promise((resolve) => {
+    const options = elements.languageOptions.map(el => el.dataset.lang);
+    if (options.length === 0) return resolve('en');
+    let index = 0;
+    let settled = false;
+
+    const render = () => {
+      elements.languageOptions.forEach((el, i) => el.classList.toggle('selected', i === index));
+      // Preview the hint in the highlighted language
+      loadTranslations(options[index]);
+      if (elements.languageTitle) elements.languageTitle.textContent = t('setup.chooseLanguage');
+      if (elements.languageHint) elements.languageHint.textContent = t('setup.languageHint');
+    };
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      document.removeEventListener('keydown', keyHandler);
+      elements.languageOptions.forEach(el => el.onclick = null);
+      console.log('[SETUP] Language chosen:', options[index]);
+      resolve(options[index]);
+    };
+
+    const move = (dir) => {
+      index = (index + (dir === 'left' ? -1 : 1) + options.length) % options.length;
+      render();
+    };
+
+    const keyHandler = (e) => {
+      if (state.screen !== 'language' || settled) return;
+      if (e.code === 'ArrowLeft') move('left');
+      else if (e.code === 'ArrowRight') move('right');
+      else if (e.code === 'Enter' || e.code === 'Space') finish();
+    };
+
+    window.electronAPI.onKnobRotate((data) => {
+      if (state.screen !== 'language' || settled) return;
+      move(data && data.direction === 'left' ? 'left' : 'right');
+    });
+    window.electronAPI.onButtonPress(() => {
+      if (state.screen !== 'language' || settled) return;
+      finish();
+    });
+    document.addEventListener('keydown', keyHandler);
+    elements.languageOptions.forEach((el, i) => {
+      el.onclick = () => { if (state.screen !== 'language' || settled) return; index = i; render(); finish(); };
+    });
+
+    render();
+    showScreen('language');
+  });
+}
 
 function stopPairingPolling() {
   if (state.pairingPollTimer) {
@@ -942,7 +1037,8 @@ async function startPairingFlow() {
     elements.pairingEnv.style.display = flags.isStaging ? 'block' : 'none';
   }
 
-  elements.pairingStatus.textContent = 'Requesting code…';
+  applySetupText();
+  elements.pairingStatus.textContent = t('setup.pairingRequesting');
   elements.pairingCode.textContent = '····-····';
   elements.pairingUrl.textContent = '';
   if (elements.pairingQr) elements.pairingQr.innerHTML = '';
@@ -954,9 +1050,9 @@ async function startPairingFlow() {
     console.error('[PAIRING] Failed to start pairing:', error);
     if (!state.pairingActive) return;
     if (isNetworkError(error)) {
-      elements.pairingStatus.textContent = 'No connection — retrying…';
+      elements.pairingStatus.textContent = t('setup.pairingNoConnection');
     } else {
-      elements.pairingStatus.textContent = `Could not get a code (${error.message}). Retrying…`;
+      elements.pairingStatus.textContent = fill(t('setup.pairingError'), { error: error.message });
     }
     state.pairingPollTimer = setTimeout(startPairingFlow, 8000);
     return;
@@ -966,7 +1062,7 @@ async function startPairingFlow() {
   elements.pairingCode.textContent = pairing.user_code;
   elements.pairingUrl.textContent = (pairing.verification_url || '').replace(/^https?:\/\//, '');
   renderPairingQr(pairing.verification_url_complete || pairing.verification_url);
-  elements.pairingStatus.textContent = 'Waiting for approval on your phone…';
+  elements.pairingStatus.textContent = t('setup.pairingWaiting');
 
   const intervalMs = Math.max(2000, (pairing.interval || 5) * 1000);
   const expiresAt = Date.now() + (pairing.expires_in || 600) * 1000;
@@ -985,7 +1081,7 @@ async function startPairingFlow() {
       result = await window.electronAPI.pairingPoll();
     } catch (error) {
       console.warn('[PAIRING] Poll failed:', error.message);
-      elements.pairingStatus.textContent = 'Connection hiccup — still waiting…';
+      elements.pairingStatus.textContent = t('setup.pairingHiccup');
       state.pairingPollTimer = setTimeout(poll, intervalMs);
       return;
     }
@@ -997,7 +1093,7 @@ async function startPairingFlow() {
         console.log('[PAIRING] Approved:', result.device);
         stopPairingPolling();
         state.deviceConfig = result.device;
-        elements.pairingStatus.textContent = `Connected as ${result.device.equipment_name || 'booth'} — starting…`;
+        elements.pairingStatus.textContent = fill(t('setup.pairingConnected'), { name: result.device.equipment_name || 'booth' });
         // Give the operator a moment to read the confirmation, then boot normally
         setTimeout(() => {
           // Leave via the loading screen so the usual fade/flow applies
@@ -1007,7 +1103,7 @@ async function startPairingFlow() {
         return;
 
       case 'pending':
-        elements.pairingStatus.textContent = 'Waiting for approval on your phone…';
+        elements.pairingStatus.textContent = t('setup.pairingWaiting');
         state.pairingPollTimer = setTimeout(poll, result.slow_down ? intervalMs * 2 : intervalMs);
         return;
 
@@ -1017,13 +1113,13 @@ async function startPairingFlow() {
       case 'denied':
       case 'not_started':
         console.log('[PAIRING] Code', result.status, '— requesting a new one');
-        elements.pairingStatus.textContent = 'Code expired — getting a new one…';
+        elements.pairingStatus.textContent = t('setup.pairingExpired');
         state.pairingPollTimer = setTimeout(startPairingFlow, 1500);
         return;
 
       default:
         console.warn('[PAIRING] Unexpected poll result:', result);
-        elements.pairingStatus.textContent = `Pairing error: ${result.error || result.status}. Retrying…`;
+        elements.pairingStatus.textContent = fill(t('setup.pairingError'), { error: result.error || result.status });
         state.pairingPollTimer = setTimeout(startPairingFlow, 8000);
         return;
     }
@@ -1041,8 +1137,11 @@ function handleAuthInvalid(reason) {
     clearInterval(configPollingInterval);
     configPollingInterval = null;
   }
-  showScreen('pairing');
-  startPairingFlow();
+  stopPairingPolling();
+  // Re-run the normal start sequence: it lands on language (if never chosen),
+  // WiFi (if offline) or the pairing screen.
+  showScreen('loading');
+  initializeApp();
 }
 
 // =============================================================================
@@ -1082,7 +1181,7 @@ async function applyBookingWifi(config) {
 
 async function initializeWiFiSetup() {
   try {
-    elements.wifiStatus.textContent = 'Waiting for your WiFi QR code...';
+    elements.wifiStatus.textContent = t('wifi.waiting');
 
     // Make re-entry safe: stop any previous scan loop and camera stream first.
     // Without this, the --force-wifi retry loop (and production reconnect
@@ -1177,7 +1276,7 @@ async function handleWiFiQRDetected(qrData) {
     clearTimeout(state.wifiScanInterval);
   }
 
-  elements.wifiStatus.textContent = 'QR code detected! Connecting...';
+  elements.wifiStatus.textContent = t('wifi.detected');
 
   try {
     // Parse WiFi config
@@ -1194,7 +1293,7 @@ async function handleWiFiQRDetected(qrData) {
       throw new Error(result.error || 'WiFi connection failed');
     }
 
-    elements.wifiStatus.textContent = 'Connected! Registering device...';
+    elements.wifiStatus.textContent = t('wifi.connected');
 
     // Release the QR-scanning camera before continuing so it doesn't stay
     // open behind the booth camera.
@@ -1208,11 +1307,11 @@ async function handleWiFiQRDetected(qrData) {
 
   } catch (error) {
     console.error('[WIFI] Connection error:', error);
-    elements.wifiStatus.textContent = `Connection failed: ${error.message}`;
+    elements.wifiStatus.textContent = `${t('wifi.failed')}: ${error.message}`;
 
     // Restart scanning after 3 seconds
     setTimeout(() => {
-      elements.wifiStatus.textContent = 'Waiting for your WiFi QR code...';
+      elements.wifiStatus.textContent = t('wifi.waiting');
       scanForWiFiQR();
     }, 3000);
   }

@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   pairingStart: () => ipcRenderer.invoke('pairing:start'),
   pairingPoll: () => ipcRenderer.invoke('pairing:poll'),
   pairingReset: () => ipcRenderer.invoke('pairing:reset'),
+  setupGetLanguage: () => ipcRenderer.invoke('setup:get-language'),
+  setupSetLanguage: (language) => ipcRenderer.invoke('setup:set-language', language),
   onAuthInvalid: (callback) => ipcRenderer.on('auth:invalid', (event, reason) => callback(reason)),
   apiGenerateContent: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-content', photoDataUrl, metadata),
   apiGeneratePoem: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-poem', photoDataUrl, metadata), // DEPRECATED

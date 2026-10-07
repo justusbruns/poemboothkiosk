@@ -544,6 +544,8 @@ function createApiClient() {
     onAuthInvalid: (reason) => {
       console.warn('[MAIN] Device credentials invalid:', reason);
       deviceConfig = null;
+      // No point polling print jobs without credentials; pairing restarts it.
+      if (printJobService) { printJobService.stop(); printJobService = null; }
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('auth:invalid', reason);
       }
@@ -643,6 +645,41 @@ ipcMain.handle('pairing:poll', async () => {
     startPrintJobService();
   }
   return result;
+});
+
+// =============================================================================
+// IPC Handlers - Setup preferences (language chosen on first boot)
+// =============================================================================
+
+const SETUP_FILE = path.join(app.getPath('userData'), 'setup.json');
+const SETUP_LANGUAGES = ['nl', 'en'];
+
+function readSetup() {
+  try {
+    return JSON.parse(fs.readFileSync(SETUP_FILE, 'utf8')) || {};
+  } catch (e) {
+    return {};
+  }
+}
+
+ipcMain.handle('setup:get-language', async () => {
+  const lang = readSetup().language;
+  return SETUP_LANGUAGES.includes(lang) ? lang : null;
+});
+
+ipcMain.handle('setup:set-language', async (event, language) => {
+  if (!SETUP_LANGUAGES.includes(language)) {
+    return { success: false, error: 'Unsupported setup language' };
+  }
+  try {
+    const setup = { ...readSetup(), language, updated_at: new Date().toISOString() };
+    fs.writeFileSync(SETUP_FILE, JSON.stringify(setup, null, 2));
+    console.log('[MAIN] Setup language saved:', language);
+    return { success: true };
+  } catch (error) {
+    console.error('[MAIN] Failed to save setup language:', error);
+    return { success: false, error: error.message };
+  }
 });
 
 // Forget stored credentials so the booth pairs again on next start

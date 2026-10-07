@@ -59,6 +59,29 @@
     </div>
   </div>
 
+  <!-- Setup Language Screen (first boot, before WiFi / pairing) -->
+  <div id="language-screen" class="screen">
+    <div class="update-content language-content">
+      <div class="language-icon">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="80" height="80">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C11.176 10.658 7.69 15.08 3 17.502m9.334-12.138c.896.061 1.785.147 2.666.257m-4.589 8.495a18.023 18.023 0 01-3.827-5.802" />
+        </svg>
+      </div>
+      <h1 id="language-title">Kies je taal / Choose your language</h1>
+      <div class="update-options language-options">
+        <div id="language-nl" class="update-option language-option selected" data-lang="nl">
+          <div class="option-flag">🇳🇱</div>
+          <span>Nederlands</span>
+        </div>
+        <div id="language-en" class="update-option language-option" data-lang="en">
+          <div class="option-flag">🇬🇧</div>
+          <span>English</span>
+        </div>
+      </div>
+      <p id="language-hint" class="update-hint">← Draai aan de knop om te kiezen, druk om te bevestigen →</p>
+    </div>
+  </div>
+
   <!-- WiFi Setup Screen -->
   <div id="wifi-screen" class="screen">
     <div class="wifi-content">
@@ -73,8 +96,8 @@
   <!-- Device Pairing Screen (Smart-TV style: scan QR, log in on phone, confirm code) -->
   <div id="pairing-screen" class="screen">
     <div class="pairing-content">
-      <h1>Connect this booth</h1>
-      <p class="pairing-intro">Scan the QR code with your phone, log in to your Poem Booth account and confirm the code below.</p>
+      <h1 id="pairing-title">Connect this booth</h1>
+      <p id="pairing-intro" class="pairing-intro">Scan the QR code with your phone, log in to your Poem Booth account and confirm the code below.</p>
       <div id="pairing-qr" class="pairing-qr"></div>
       <div id="pairing-code" class="pairing-code">&middot;&middot;&middot;&middot;-&middot;&middot;&middot;&middot;</div>
       <p id="pairing-url" class="pairing-url"></p>

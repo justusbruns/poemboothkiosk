@@ -11,7 +11,25 @@ export const nl = {
   },
   wifi: {
     setupRequired: 'Verbind mij met internet',
-    holdQRCode: 'Houd je wifi-QR-code voor de camera'
+    holdQRCode: 'Houd je wifi-QR-code voor de camera',
+    waiting: 'Wachten op je wifi-QR-code...',
+    detected: 'QR-code herkend! Verbinden...',
+    connected: 'Verbonden! Setup gaat verder...',
+    stillOffline: 'Nog steeds geen internet — houd je wifi-QR-code voor de camera',
+    failed: 'Verbinden mislukt'
+  },
+  setup: {
+    chooseLanguage: 'Kies je taal',
+    languageHint: '← Draai aan de knop om te kiezen, druk om te bevestigen →',
+    pairingTitle: 'Koppel deze booth',
+    pairingIntro: 'Scan de QR-code met je telefoon, log in op je Poem Booth-account en bevestig de code hieronder.',
+    pairingRequesting: 'Code aanvragen…',
+    pairingWaiting: 'Wachten op goedkeuring op je telefoon…',
+    pairingExpired: 'Code verlopen — nieuwe code ophalen…',
+    pairingNoConnection: 'Geen verbinding — opnieuw proberen…',
+    pairingHiccup: 'Verbinding hapert — nog even wachten…',
+    pairingError: 'Koppelfout: {error}. Opnieuw proberen…',
+    pairingConnected: 'Gekoppeld als {name} — starten…'
   },
   booth: {
     pressForPoetry: 'Druk voor Poëzie',
