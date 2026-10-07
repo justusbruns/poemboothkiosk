@@ -158,12 +158,13 @@ Devices must be provisioned BEFORE deployment using the setup script in the book
 ### State Machine
 
 ```
-[loading] → [wifi] → [pairing] → [booth] → [processing] → [result]
+[loading] → [language] → [wifi] → [pairing] → [booth] → [processing] → [result]
                 ↓         ↓                        ↓
               [error] ← ← ← ← ← ← ← ← ← ← ← ← ← ←
 ```
 
 **loading:** API initialization (stored device credentials or legacy certificate), device registration
+**language:** First-boot only (unpaired booth, no `userData/setup.json` yet): pick NL/EN for the setup screens with knob/button or arrow keys + Enter. Paired booths use the backend config language.
 **wifi:** QR code scanner for WiFi auto-setup (if no internet)
 **pairing:** Smart-TV style pairing when the booth has no credentials: shows a short code + QR (`<dashboard>/pair?code=…`); the operator logs in on their phone, picks/creates the booth, and the kiosk polls `/api/device-auth/poll` until approved. Credentials (Supabase device session) are stored encrypted in `userData/device-credentials.<env>.json` via `credentialStore.js`.
 **booth:** Main photo capture screen with countdown

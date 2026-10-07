@@ -109,24 +109,26 @@ h1, h2, h3, h4, h5, h6, p {
   padding: 0 2rem;
 }
 
+/* Sizes scale with the viewport height so the screen also fits the
+   half-size dev window (540x960) and the 1080x1920 kiosk display. */
 .pairing-content h1 {
-  font-size: 3rem;
+  font-size: clamp(1.6rem, 3.4vh, 3rem);
   font-weight: 700;
-  margin-bottom: 1rem;
+  margin-bottom: 0.6em;
 }
 
 .pairing-intro {
-  font-size: 1.4rem;
+  font-size: clamp(0.9rem, 1.6vh, 1.4rem);
   line-height: 1.5;
   opacity: 0.85;
-  margin-bottom: 2.5rem;
+  margin-bottom: 2.5vh;
 }
 
 .pairing-qr {
-  width: 360px;
-  height: 360px;
+  width: min(360px, 34vh);
+  height: min(360px, 34vh);
   margin: 0 auto;
-  padding: 20px;
+  padding: min(20px, 2vh);
   background: #ffffff;
   border-radius: 24px;
   display: flex;
@@ -136,21 +138,30 @@ h1, h2, h3, h4, h5, h6, p {
 
 .pairing-qr canvas {
   display: block;
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
 }
 
 .pairing-code {
   font-family: 'Inter', monospace;
-  font-size: 5rem;
+  font-size: clamp(2.2rem, 5.5vh, 5rem);
   font-weight: 800;
   letter-spacing: 0.25em;
-  margin: 2rem 0 0.5rem;
+  margin: 2vh 0 0.5vh;
   padding-left: 0.25em; /* visually centre despite trailing letter-spacing */
 }
 
 .pairing-url {
-  font-size: 1.3rem;
+  font-size: clamp(0.8rem, 1.4vh, 1.3rem);
   opacity: 0.7;
-  margin-bottom: 1rem;
+  margin-bottom: 1vh;
+}
+
+#pairing-screen .status-message {
+  font-size: clamp(0.9rem, 1.4vh, 1.2rem);
+  padding: 0.8vh 1rem;
+  margin-top: 1vh;
 }
 
 .pairing-env {
