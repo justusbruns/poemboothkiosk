@@ -947,6 +947,15 @@ async function initializeApp() {
       return;
     }
 
+    // Stored credentials were rejected during startup: the main process has
+    // already cleared them and sent auth:invalid, which re-runs this flow and
+    // lands on the pairing screen. Don't flash the red error screen first.
+    const msg = (error.message || '').toLowerCase();
+    if (msg.includes('re-pairing required') || msg.includes('not paired')) {
+      console.log('[RENDERER] Credentials rejected during init → pairing flow takes over');
+      return;
+    }
+
     showError('Initialization failed', error.message, error);
   }
 }
