@@ -30,6 +30,8 @@ const state = {
   loadingLottieAnimation: null,
   printerStatus: { available: false, status: 'unknown' },
   cameraRotation: 0, // Camera rotation from backend config (0, 90, 180, 270)
+  cameraResolution: null,    // { width, height, fps, label } actually delivered by the camera
+  cameraMaxResolution: null, // { width, height } the track reports it can do
   installedWifiSsid: null, // SSID of the booking WiFi profile already installed (dedup)
   loadingTextInterval: null,
   loadingTextIndex: 0,
@@ -151,6 +153,32 @@ function applyCameraRotation(videoElement, extraScale = 1) {
   videoElement.style.transform = `translate(-50%, -50%) scaleX(-1) rotate(${rotation}deg)${scalePart}`;
 }
 
+// Push the camera track to the largest frame size it reports it can deliver.
+// Best-effort: if the driver refuses, we keep whatever getUserMedia gave us.
+async function maximizeCameraResolution(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track || typeof track.getCapabilities !== 'function') return;
+
+  let caps;
+  try { caps = track.getCapabilities(); } catch (e) { return; }
+  const maxW = caps.width && caps.width.max;
+  const maxH = caps.height && caps.height.max;
+  if (!maxW || !maxH) return;
+  state.cameraMaxResolution = { width: maxW, height: maxH };
+
+  const current = track.getSettings ? track.getSettings() : {};
+  console.log(`[CAMERA] Track capabilities: up to ${maxW}x${maxH} (currently ${current.width}x${current.height})`);
+  if (current.width >= maxW && current.height >= maxH) return;
+
+  try {
+    await track.applyConstraints({ width: { ideal: maxW }, height: { ideal: maxH } });
+    const after = track.getSettings ? track.getSettings() : {};
+    console.log(`[CAMERA] Resolution after applyConstraints: ${after.width}x${after.height}`);
+  } catch (e) {
+    console.warn('[CAMERA] Could not raise camera resolution:', e.message);
+  }
+}
+
 async function initializeCamera(videoElement) {
   try {
     console.log('[CAMERA] Initializing camera...');
@@ -166,6 +194,12 @@ async function initializeCamera(videoElement) {
     };
 
     state.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    // `ideal` is only a wish — the driver may hand us 720p or worse. Ask the track for
+    // its real maximum and insist on that, so every kiosk captures at the best the
+    // camera can do.
+    await maximizeCameraResolution(state.cameraStream);
+
     videoElement.srcObject = state.cameraStream;
 
     await new Promise((resolve) => {
@@ -175,9 +209,24 @@ async function initializeCamera(videoElement) {
     // Apply camera rotation from backend config
     applyCameraRotation(videoElement);
 
+    const settings = state.cameraStream.getVideoTracks()[0]?.getSettings?.() || {};
+    state.cameraResolution = {
+      width: videoElement.videoWidth,
+      height: videoElement.videoHeight,
+      fps: settings.frameRate ? Math.round(settings.frameRate) : null,
+      label: state.cameraStream.getVideoTracks()[0]?.label || ''
+    };
+
     console.log('[CAMERA] Camera initialized:',
       videoElement.videoWidth, 'x', videoElement.videoHeight,
-      'rotation:', state.cameraRotation + '°');
+      '@', state.cameraResolution.fps, 'fps',
+      'rotation:', state.cameraRotation + '°',
+      '| max:', state.cameraMaxResolution ? `${state.cameraMaxResolution.width}x${state.cameraMaxResolution.height}` : 'unknown',
+      '|', state.cameraResolution.label);
+
+    if (videoElement.videoWidth < 1920 || videoElement.videoHeight < 1080) {
+      console.warn(`[CAMERA] ⚠️ Camera is delivering ${videoElement.videoWidth}x${videoElement.videoHeight} — below 1080p. Photo quality will suffer.`);
+    }
 
     return true;
   } catch (error) {
@@ -226,7 +275,17 @@ async function capturePhoto(videoElement, canvasElement) {
 
     ctx.restore();
 
-    const dataURL = canvasElement.toDataURL('image/jpeg', 0.95);
+    // Encode asynchronously (toBlob) instead of toDataURL: the JPEG encode of a 1080p
+    // frame takes long enough to freeze the renderer — and the flash — mid-animation.
+    const dataURL = await new Promise((resolve, reject) => {
+      canvasElement.toBlob((blob) => {
+        if (!blob) { reject(new Error('Canvas toBlob returned null')); return; }
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg', 0.95);
+    });
 
     console.log('[CAMERA] Photo captured:', canvasElement.width, 'x', canvasElement.height,
                 'with', rotation, '° rotation');
@@ -786,7 +845,9 @@ async function initializeApp() {
     // Initialize camera
     await initializeCamera(elements.cameraVideo);
 
-    updateStatus('loading', 'Starting kiosk...');
+    // Show the real capture resolution on the loading screen so a sub-par camera
+    // setup is visible at a glance on the kiosk itself
+    updateStatus('loading', `Starting kiosk... (camera ${formatCameraResolution()})`);
 
     // Show main booth screen
     setTimeout(() => {
@@ -3260,6 +3321,13 @@ function updateBoothBrandVisibility() {
   }
 }
 
+// e.g. "1920×1080 @ 30fps", or "unknown" before the camera is up
+function formatCameraResolution() {
+  const r = state.cameraResolution;
+  if (!r || !r.width) return 'unknown';
+  return `${r.width}×${r.height}${r.fps ? ` @ ${r.fps}fps` : ''}`;
+}
+
 function updateStatus(screen, message) {
   if (screen === 'loading') {
     elements.loadingStatus.textContent = message;
@@ -3369,6 +3437,8 @@ function updateDebugInfo() {
     equipmentId: state.deviceConfig?.equipment_id || 'N/A',
     hubId: state.deviceConfig?.hub_id || 'N/A',
     online: navigator.onLine,
+    camera: formatCameraResolution() +
+      (state.cameraMaxResolution ? ` (max ${state.cameraMaxResolution.width}×${state.cameraMaxResolution.height})` : ''),
     processing: state.isProcessing,
     currentStyle: currentStyle ? `${currentStyle.name} (${state.currentStyleIndex + 1}/${state.availableStyles.length})` : 'None'
   };
