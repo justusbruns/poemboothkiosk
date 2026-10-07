@@ -1515,6 +1515,9 @@ async function getLocalizedCountdownData() {
     countdownBaseData = await loadJsonXHR('./assets/pb_countdown.json');
   }
   const data = JSON.parse(JSON.stringify(countdownBaseData)); // clone so the cached base stays clean
+  // Drop the baked-in flash layer: the DOM #white-flash overlay does the flash instead,
+  // so it stays in sync with the capture even when the Lottie drops frames.
+  data.layers = (data.layers || []).filter((layer) => layer.nm !== 'flash');
   const map = {
     txt_look: t('countdown.look'),
     txt_ready: t('countdown.ready'),
@@ -1529,11 +1532,50 @@ async function getLocalizedCountdownData() {
   return data;
 }
 
-// Play the countdown Lottie over the live camera and capture the photo during its flash.
-// The animation is 1080x1920 (9:16), 30fps, 276 frames (9.2s, 5-4-3-2-1); the flash reaches
-// full white at frame 269, which is exactly when we grab the camera frame.
+// Flash the screen white and grab the camera frame while it is white. The overlay is a
+// plain DOM element with a CSS animation (cheap, GPU-composited), so the white is really
+// on screen at the moment of capture — unlike a Lottie flash layer, which can be skipped
+// or delayed when the animation drops frames on slower kiosks.
+function flashAndCapture() {
+  const flash = elements.whiteFlash;
+  const capture = () => capturePhoto(elements.cameraVideo, elements.cameraCanvas)
+    .then((url) => { state.currentPhoto = url; })
+    .catch((e) => console.error('[RENDERER] Capture during flash failed:', e));
+
+  if (!flash) return capture();
+
+  const flashFaded = new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      flash.removeEventListener('animationend', finish);
+      flash.style.display = 'none';
+      resolve();
+    };
+    flash.addEventListener('animationend', finish);
+    flash.style.display = 'block'; // (re)starts the CSS flash animation: hold white, then fade
+    setTimeout(finish, 1500);      // safety net if animationend never fires
+  });
+
+  // Wait until the white overlay has actually been painted, then capture
+  const captured = new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      console.log('[RENDERER] Flash on screen — capturing photo');
+      capture().then(resolve);
+    }));
+  });
+
+  // Done once the photo is taken AND the flash has faded out
+  return Promise.all([captured, flashFaded]).then(() => {});
+}
+
+// Play the countdown Lottie over the live camera, then flash and capture the photo.
+// The animation is 1080x1920 (9:16), 30fps, 276 frames (9.2s, 5-4-3-2-1); its own flash
+// layer starts at frame 266, which is when we hand over to the DOM flash + capture.
 async function playCountdownAndCapture() {
-  const CAPTURE_FRAME = 269;
+  const FLASH_FRAME = 266;
+  const FLASH_FRAME_MS = (FLASH_FRAME / 30) * 1000;
   const container = elements.countdownLottie;
 
   let animData = null;
@@ -1562,34 +1604,34 @@ async function playCountdownAndCapture() {
       rendererSettings: { preserveAspectRatio: 'xMidYMid slice' }
     });
 
-    let captureStarted = false;
-    let capturePromise = Promise.resolve();
+    const startedAt = performance.now();
+    let flashStarted = false;
+    let wallClockTimer = null;
 
-    const doCapture = () => {
-      captureStarted = true;
-      console.log('[RENDERER] Countdown flash reached — capturing photo');
-      capturePromise = capturePhoto(elements.cameraVideo, elements.cameraCanvas)
-        .then((url) => { state.currentPhoto = url; })
-        .catch((e) => console.error('[RENDERER] Capture during flash failed:', e));
-    };
-
-    anim.addEventListener('enterFrame', (e) => {
-      if (!captureStarted && e.currentTime >= CAPTURE_FRAME) doCapture();
-    });
-
-    const finish = async () => {
-      if (!captureStarted) doCapture();   // safety net if we never hit the frame event
-      try { await capturePromise; } catch (e) {}
+    // Hand over from the Lottie to the DOM flash + capture. Runs once, from whichever
+    // fires first: the Lottie reaching the flash frame, or the wall clock (so a stalled
+    // or throttled animation can never delay the flash).
+    const startFlash = () => {
+      if (flashStarted) return;
+      flashStarted = true;
+      clearTimeout(wallClockTimer);
+      console.log(`[RENDERER] Countdown done after ${Math.round(performance.now() - startedAt)}ms — flashing`);
+      // Stop the Lottie right away so it doesn't compete for frames with the flash
       try { anim.destroy(); } catch (e) {}
       container.style.display = 'none';
       container.innerHTML = '';
-      resolve();
+      flashAndCapture().finally(resolve);
     };
 
-    anim.addEventListener('complete', finish);
+    anim.addEventListener('enterFrame', (e) => {
+      if (e.currentTime >= FLASH_FRAME) startFlash();
+    });
+    wallClockTimer = setTimeout(startFlash, FLASH_FRAME_MS + 100);
+
+    anim.addEventListener('complete', startFlash); // safety net if the frame event was skipped
     anim.addEventListener('data_failed', () => {
       console.error('[RENDERER] Countdown animation failed to load');
-      finish();
+      startFlash();
     });
   });
 }
