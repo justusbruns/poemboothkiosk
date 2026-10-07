@@ -1,6 +1,6 @@
 {
   "name": "poembooth-kiosk",
-  "version": "1.5.8",
+  "version": "1.5.9",
   "description": "Poem Booth Kiosk Application - AI-powered photo booth for generating personalized poems",
   "main": "src/main/main.js",
   "scripts": {
@@ -36,7 +36,7 @@
     "node-fetch": "^2.7.0",
     "node-machine-id": "^1.1.12",
     "node-wifi": "^2.0.15",
-    "playwright": "^1.40.0",
+    "playwright": "1.56.1",
     "qrcode": "^1.5.3",
     "sharp": "^0.33.0",
     "uuid": "^9.0.1"
