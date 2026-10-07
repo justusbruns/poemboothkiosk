@@ -52,26 +52,33 @@ export function getCurrentLanguage() {
  * @param {string} key - Translation key (e.g., "loading.checkingCertificates")
  * @returns {string} Translated text or the key itself if not found
  */
-export function t(key) {
-  // Navigate nested keys like "loading.checkingCertificates"
-  const keys = key.split('.');
-  let value = currentTranslations;
-
-  for (const k of keys) {
+function resolve(table, key) {
+  let value = table;
+  for (const k of key.split('.')) {
     if (value && typeof value === 'object') {
       value = value[k];
     } else {
-      // Key not found, return the key itself as fallback
-      console.warn(`[i18n] Translation key not found: ${key}`);
-      return key;
+      return undefined;
     }
   }
+  return (typeof value === 'string' || Array.isArray(value)) ? value : undefined;
+}
 
-  // If we got a string or array, return it; otherwise return the key
-  if (typeof value === 'string' || Array.isArray(value)) {
-    return value;
-  } else {
-    console.warn(`[i18n] Translation key "${key}" did not resolve to a string or array`);
-    return key;
+export function t(key) {
+  // Navigate nested keys like "loading.checkingCertificates"; fall back to
+  // English, then to the key itself, so a missing translation never shows
+  // up as a blank or a crash on the kiosk.
+  const value = resolve(currentTranslations, key);
+  if (value !== undefined) return value;
+
+  const fallback = resolve(en, key);
+  if (fallback !== undefined) {
+    if (currentTranslations !== en) {
+      console.warn(`[i18n] Missing "${key}" in ${currentLanguage}, using English`);
+    }
+    return fallback;
   }
+
+  console.warn(`[i18n] Translation key not found: ${key}`);
+  return key;
 }

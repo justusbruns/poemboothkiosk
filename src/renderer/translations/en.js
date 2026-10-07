@@ -18,6 +18,16 @@ export const en = {
     stillOffline: 'Still no internet — hold your WiFi QR code in front of the camera',
     failed: 'Connection failed'
   },
+  update: {
+    available: 'Update available',
+    updating: 'Updating...',
+    skip: 'Skip',
+    install: 'Install',
+    hint: '← Turn the knob to choose, press to confirm →',
+    downloading: 'Downloading... {percent}%',
+    installing: 'Installing...',
+    downloadFailed: 'Download failed'
+  },
   setup: {
     chooseLanguage: 'Choose your language',
     languageHint: '← Turn the knob to choose, press to confirm →',

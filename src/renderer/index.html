@@ -38,7 +38,7 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <span>Overslaan</span>
+          <span id="update-skip-label">Overslaan</span>
         </div>
         <div id="update-install" class="update-option selected">
           <div class="option-icon">
@@ -46,10 +46,10 @@
               <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
             </svg>
           </div>
-          <span>Installeren</span>
+          <span id="update-install-label">Installeren</span>
         </div>
       </div>
-      <p class="update-hint">← Gebruik draaiknop om te kiezen, druk om te bevestigen →</p>
+      <p id="update-hint" class="update-hint">← Gebruik draaiknop om te kiezen, druk om te bevestigen →</p>
       <div id="update-progress" class="update-progress" style="display: none;">
         <div class="progress-bar">
           <div id="update-progress-fill" class="progress-fill" style="width: 0%"></div>
@@ -68,15 +68,9 @@
         </svg>
       </div>
       <h1 id="language-title">Kies je taal / Choose your language</h1>
-      <div class="update-options language-options">
-        <div id="language-nl" class="update-option language-option selected" data-lang="nl">
-          <div class="option-flag">🇳🇱</div>
-          <span>Nederlands</span>
-        </div>
-        <div id="language-en" class="update-option language-option" data-lang="en">
-          <div class="option-flag">🇬🇧</div>
-          <span>English</span>
-        </div>
+      <div class="language-options">
+        <div id="language-nl" class="language-option selected" data-lang="nl">Nederlands</div>
+        <div id="language-en" class="language-option" data-lang="en">English</div>
       </div>
       <p id="language-hint" class="update-hint">← Draai aan de knop om te kiezen, druk om te bevestigen →</p>
     </div>
@@ -85,10 +79,14 @@
   <!-- WiFi Setup Screen -->
   <div id="wifi-screen" class="screen">
     <div class="wifi-content">
-      <div class="icon">📶</div>
       <h1>Please connect me to the internet</h1>
       <p>Hold your WiFi QR code in front of the camera</p>
-      <video id="wifi-scanner-video" autoplay playsinline></video>
+      <!-- The booth camera is mounted a quarter turn rotated; the preview is
+           rotated 90° clockwise so the operator sees a natural image. jsQR
+           scans the raw frames, so detection is unaffected. -->
+      <div class="wifi-video-wrap">
+        <video id="wifi-scanner-video" autoplay playsinline></video>
+      </div>
       <div class="status-message" id="wifi-status"></div>
     </div>
   </div>

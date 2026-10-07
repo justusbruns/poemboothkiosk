@@ -632,7 +632,8 @@ ipcMain.handle('api:get-auth-status', async () => {
 // secret device_code never leaves the main process.
 ipcMain.handle('pairing:start', async () => {
   await ensureApiClient();
-  return apiClient.startPairing();
+  const language = readSetup().language;
+  return apiClient.startPairing({ language: SETUP_LANGUAGES.includes(language) ? language : undefined });
 });
 
 // Poll once for approval. On approval the credentials are persisted and the
@@ -652,7 +653,9 @@ ipcMain.handle('pairing:poll', async () => {
 // =============================================================================
 
 const SETUP_FILE = path.join(app.getPath('userData'), 'setup.json');
-const SETUP_LANGUAGES = ['nl', 'en'];
+// Languages the kiosk has translations for. The first-boot picker only offers
+// nl/en for now; the dashboard operator-language setting may send any of these.
+const SETUP_LANGUAGES = ['nl', 'en', 'de', 'fr', 'es', 'it'];
 
 function readSetup() {
   try {

@@ -18,6 +18,16 @@ export const nl = {
     stillOffline: 'Nog steeds geen internet — houd je wifi-QR-code voor de camera',
     failed: 'Verbinden mislukt'
   },
+  update: {
+    available: 'Update beschikbaar',
+    updating: 'Bijwerken...',
+    skip: 'Overslaan',
+    install: 'Installeren',
+    hint: '← Draai aan de knop om te kiezen, druk om te bevestigen →',
+    downloading: 'Downloaden... {percent}%',
+    installing: 'Installeren...',
+    downloadFailed: 'Download mislukt'
+  },
   setup: {
     chooseLanguage: 'Kies je taal',
     languageHint: '← Draai aan de knop om te kiezen, druk om te bevestigen →',

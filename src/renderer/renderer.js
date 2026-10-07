@@ -564,6 +564,9 @@ async function showUpdateScreen(currentVersion, newVersion) {
       elements.updateVersionInfo.textContent = `v${currentVersion} → v${newVersion}`;
     }
 
+    // Texts in the active (setup) language
+    applyUpdateText();
+
     // Reset selection to install
     state.updateSelectedOption = 'install';
     updateUpdateSelection();
@@ -618,6 +621,22 @@ async function showUpdateScreen(currentVersion, newVersion) {
 }
 
 /**
+ * Apply the active language to the update screen texts
+ */
+function applyUpdateText() {
+  if (elements.updateTitle) elements.updateTitle.textContent = t('update.available');
+  const skipLabel = document.getElementById('update-skip-label');
+  const installLabel = document.getElementById('update-install-label');
+  const hint = document.getElementById('update-hint');
+  if (skipLabel) skipLabel.textContent = t('update.skip');
+  if (installLabel) installLabel.textContent = t('update.install');
+  if (hint) hint.textContent = t('update.hint');
+  if (elements.updateProgressText) {
+    elements.updateProgressText.textContent = fill(t('update.downloading'), { percent: 0 });
+  }
+}
+
+/**
  * Update visual selection on update screen
  */
 function updateUpdateSelection() {
@@ -649,7 +668,7 @@ async function handleUpdateInstall() {
 
   // Update title
   if (elements.updateTitle) {
-    elements.updateTitle.textContent = 'Updating...';
+    elements.updateTitle.textContent = t('update.updating');
   }
 
   // Listen for download progress
@@ -659,7 +678,7 @@ async function handleUpdateInstall() {
       elements.updateProgressFill.style.width = progress + '%';
     }
     if (elements.updateProgressText) {
-      elements.updateProgressText.textContent = `Downloaden... ${progress}%`;
+      elements.updateProgressText.textContent = fill(t('update.downloading'), { percent: progress });
     }
   });
 
@@ -667,7 +686,7 @@ async function handleUpdateInstall() {
   window.electronAPI.onUpdateDownloaded((info) => {
     console.log('[RENDERER] Update downloaded, installing...');
     if (elements.updateProgressText) {
-      elements.updateProgressText.textContent = 'Installeren...';
+      elements.updateProgressText.textContent = t('update.installing');
     }
 
     // Small delay then install
@@ -681,7 +700,7 @@ async function handleUpdateInstall() {
   if (!downloadResult.success) {
     console.error('[RENDERER] Update download failed:', downloadResult.error);
     if (elements.updateProgressText) {
-      elements.updateProgressText.textContent = 'Download mislukt: ' + downloadResult.error;
+      elements.updateProgressText.textContent = `${t('update.downloadFailed')}: ${downloadResult.error}`;
     }
 
     // Show retry option after 3 seconds
@@ -689,7 +708,7 @@ async function handleUpdateInstall() {
       // Reset and allow retry or skip
       if (updateOptions) updateOptions.style.display = 'flex';
       if (updateHint) updateHint.style.display = 'block';
-      if (elements.updateTitle) elements.updateTitle.textContent = 'Update Beschikbaar';
+      if (elements.updateTitle) elements.updateTitle.textContent = t('update.available');
       if (elements.updateProgress) elements.updateProgress.style.display = 'none';
     }, 3000);
   }
@@ -747,13 +766,15 @@ async function initializeApp() {
 
     // First-boot setup, step 1: language (NL/EN) for the setup screens.
     // Paired booths take their language from the backend config instead.
-    if (needsSetup) {
-      let setupLanguage = await window.electronAPI.setupGetLanguage();
-      if (!setupLanguage) {
-        setupLanguage = await showLanguageScreen();
-        await window.electronAPI.setupSetLanguage(setupLanguage);
-        showScreen('loading');
-      }
+    let setupLanguage = await window.electronAPI.setupGetLanguage();
+    if (needsSetup && !setupLanguage) {
+      setupLanguage = await showLanguageScreen();
+      await window.electronAPI.setupSetLanguage(setupLanguage);
+      showScreen('loading');
+    }
+    // Operator-facing screens (WiFi, pairing, update) follow the setup
+    // language whenever one was chosen; guest UI follows the backend config.
+    if (setupLanguage) {
       loadTranslations(setupLanguage);
       applySetupText();
     }
@@ -789,6 +810,21 @@ async function initializeApp() {
 
     // Get kiosk configuration
     state.kioskConfig = await window.electronAPI.apiGetConfig();
+
+    // Operator language from the dashboard (equipment setting) wins over the
+    // locally chosen setup language. Stored so WiFi/pairing screens use it
+    // on later boots too, and applied now so the update prompt is in it.
+    const operatorLanguage = state.kioskConfig.operator_language;
+    if (operatorLanguage && operatorLanguage !== setupLanguage) {
+      console.log('[RENDERER] Operator language from config:', operatorLanguage);
+      const saved = await window.electronAPI.setupSetLanguage(operatorLanguage);
+      if (!saved || !saved.success) console.warn('[RENDERER] Could not persist operator language:', saved && saved.error);
+      setupLanguage = operatorLanguage;
+    }
+    if (setupLanguage) {
+      loadTranslations(setupLanguage);
+      applySetupText();
+    }
 
     // Pre-install the active booking's venue WiFi as a saved profile (no switch)
     await applyBookingWifi(state.kioskConfig);

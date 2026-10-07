@@ -241,7 +241,7 @@ class ApiClient {
 
   // Ask the backend for a fresh pairing code. Returns what the renderer may
   // show; the secret device_code stays in the main process.
-  async startPairing() {
+  async startPairing(options = {}) {
     const info = this.deviceInfo || this.getSystemInfo();
     const { statusCode, json } = await this.rawRequest('POST', '/api/device-auth/start', {
       device_info: {
@@ -249,7 +249,9 @@ class ApiClient {
         platform: info.platform,
         app_version: this.appVersion,
         mac: this.getPrimaryMac(),
-        serial: typeof info.machineId === 'string' ? info.machineId : undefined
+        serial: typeof info.machineId === 'string' ? info.machineId : undefined,
+        // setup language chosen on the booth; seeds equipment.operator_language
+        language: options.language || undefined
       }
     }, { auth: false });
 

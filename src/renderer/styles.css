@@ -64,15 +64,29 @@ h1, h2, h3, h4, h5, h6, p {
   text-align: center;
 }
 
-/* WiFi Setup Screen */
+/* WiFi Setup Screen (same dark setup style as language / pairing) */
 #wifi-screen {
-  background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+  background: #000000;
 }
 
 .wifi-content {
   font-family: 'Inter', sans-serif;
   text-align: center;
-  max-width: 800px;
+  max-width: 820px;
+  padding: 0 2rem;
+}
+
+.wifi-content h1 {
+  font-size: clamp(1.6rem, 3.4vh, 3rem);
+  font-weight: 700;
+  margin-bottom: 0.6em;
+}
+
+.wifi-content p {
+  font-size: clamp(0.9rem, 1.6vh, 1.4rem);
+  line-height: 1.5;
+  opacity: 0.85;
+  margin-bottom: 2.5vh;
 }
 
 .icon {
@@ -80,12 +94,26 @@ h1, h2, h3, h4, h5, h6, p {
   margin-bottom: 1rem;
 }
 
+/* Portrait box holding the 4:3 camera preview rotated 90° clockwise */
+.wifi-video-wrap {
+  width: min(480px, 36vh);
+  height: min(640px, 48vh);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  border: 4px solid rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+  background: #111;
+}
+
 #wifi-scanner-video {
-  width: 640px;
-  height: 480px;
-  border-radius: 12px;
-  margin: 2rem auto;
-  border: 4px solid rgba(255, 255, 255, 0.3);
+  width: min(640px, 48vh);
+  height: min(480px, 36vh);
+  transform: rotate(90deg);
+  flex: none;
+  object-fit: cover;
 }
 
 .status-message {
@@ -182,19 +210,36 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 .language-content h1 {
-  font-size: 2.6rem;
-  margin-bottom: 2.5rem;
+  font-size: clamp(1.6rem, 3.4vh, 3rem);
+  margin-bottom: 4vh;
+}
+
+.language-options {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2vh;
+  width: min(420px, 70vw);
+  margin: 0 auto 4vh;
 }
 
 .language-option {
-  min-width: 260px;
+  font-size: clamp(1.3rem, 2.6vh, 2.2rem);
+  font-weight: 600;
+  padding: 2.2vh 2rem;
+  border-radius: 16px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
+  transition: all 0.2s ease;
 }
 
-.option-flag {
-  font-size: 3rem;
-  line-height: 1;
-  margin-bottom: 0.75rem;
+.language-option.selected {
+  border-color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+  transform: scale(1.03);
 }
 
 /* Update Screen */
