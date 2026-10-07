@@ -2363,6 +2363,9 @@ function showResultCameraBackground() {
   if (!elements.resultCamera) return;
   if (state.cameraStream && elements.resultCamera.srcObject !== state.cameraStream) {
     elements.resultCamera.srcObject = state.cameraStream;
+  }
+  // (Re)start playback — the previous wipe-out paused it when freezing the frame
+  if (elements.resultCamera.srcObject && elements.resultCamera.paused) {
     const p = elements.resultCamera.play && elements.resultCamera.play();
     if (p && p.catch) p.catch(() => {});
   }
@@ -2606,6 +2609,67 @@ function triggerGlassWipeFallback() {
   }, 800);
 }
 
+// Replace a blurred background (live camera <video> or blurred <img>) with a still
+// <canvas> snapshot that has the CSS filter baked in. During the wipe the result screen
+// is re-masked every frame; a live, CSS-blurred video underneath forces Chromium to
+// redo the blur each frame too, which stutters on the NUCs. Returns the canvas (or null).
+function freezeBlurredLayer(el, srcW, srcH) {
+  if (!el || el.offsetWidth === 0 || !srcW || !srcH) return null;
+  try {
+    const boxW = el.offsetWidth;
+    const boxH = el.offsetHeight;
+    // Half resolution is plenty for a blurred background and halves the work
+    const res = 0.5;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(boxW * res);
+    canvas.height = Math.round(boxH * res);
+
+    // Bake the element's CSS filter in, scaling blur radii to canvas resolution
+    const cssFilter = getComputedStyle(el).filter;
+    const ctx = canvas.getContext('2d');
+    if (cssFilter && cssFilter !== 'none') {
+      ctx.filter = cssFilter.replace(/blur\(([\d.]+)px\)/g, (_, r) => `blur(${parseFloat(r) * res}px)`);
+    }
+
+    // object-fit: cover
+    const scale = Math.max(canvas.width / srcW, canvas.height / srcH);
+    const dw = srcW * scale;
+    const dh = srcH * scale;
+    ctx.drawImage(el, (canvas.width - dw) / 2, (canvas.height - dh) / 2, dw, dh);
+
+    // Same box + transforms (rotation / mirror / zoom) as the original, minus the filter
+    canvas.className = el.className;
+    canvas.style.cssText = el.style.cssText;
+    canvas.style.width = boxW + 'px';
+    canvas.style.height = boxH + 'px';
+    canvas.style.filter = 'none';
+    canvas.style.animation = 'none';
+    canvas.dataset.wipeFreeze = '1';
+
+    el.after(canvas);
+    el.style.display = 'none';
+    return canvas;
+  } catch (e) {
+    console.warn('[RENDERER] Could not freeze blurred layer:', e);
+    return null;
+  }
+}
+
+function freezeResultBackground() {
+  const video = elements.resultCamera;
+  if (video && video.videoWidth) {
+    if (freezeBlurredLayer(video, video.videoWidth, video.videoHeight)) video.pause();
+  }
+  const photo = elements.resultPhoto;
+  if (photo && photo.complete && photo.naturalWidth) {
+    freezeBlurredLayer(photo, photo.naturalWidth, photo.naturalHeight);
+  }
+}
+
+function unfreezeResultBackground() {
+  screens.result.querySelectorAll('canvas[data-wipe-freeze]').forEach((c) => c.remove());
+}
+
 async function triggerGlassWipe() {
   if (state.glassWiping) return; // already returning to booth - don't double-fire
   state.glassWiping = true;
@@ -2626,7 +2690,9 @@ async function triggerGlassWipe() {
   }
 
   // Show the booth screen (live camera) underneath, while the result screen stays
-  // on top with the animated wipe mask erasing it.
+  // on top with the animated wipe mask erasing it. Freeze the blurred background
+  // first so only the mask changes per frame.
+  freezeResultBackground();
   screens.result.classList.add('wiping');
   showScreen('booth');
 
@@ -2661,6 +2727,7 @@ async function triggerGlassWipe() {
     screens.result.classList.remove('wiping');
     try { anim.destroy(); } catch (e) { /* already destroyed */ }
     maskTarget.innerHTML = '';
+    unfreezeResultBackground();
     finishResultCleanup();
   };
 
