@@ -50,6 +50,7 @@ const screens = {
   loading: document.getElementById('loading-screen'),
   update: document.getElementById('update-screen'),
   wifi: document.getElementById('wifi-screen'),
+  pairing: document.getElementById('pairing-screen'),
   booth: document.getElementById('booth-screen'),
   processing: document.getElementById('processing-screen'),
   result: document.getElementById('result-screen'),
@@ -64,6 +65,11 @@ const elements = {
   loadingStatus: document.getElementById('loading-status'),
   wifiStatus: document.getElementById('wifi-status'),
   wifiVideo: document.getElementById('wifi-scanner-video'),
+  pairingQr: document.getElementById('pairing-qr'),
+  pairingCode: document.getElementById('pairing-code'),
+  pairingUrl: document.getElementById('pairing-url'),
+  pairingStatus: document.getElementById('pairing-status'),
+  pairingEnv: document.getElementById('pairing-env'),
   cameraVideo: document.getElementById('camera-video'),
   cameraCanvas: document.getElementById('camera-canvas'),
   countdownOverlay: document.getElementById('countdown-overlay'),
@@ -705,7 +711,7 @@ function isNetworkError(error) {
 
 async function initializeApp() {
   try {
-    updateStatus('loading', 'Checking certificates...');
+    updateStatus('loading', 'Starting...');
 
     // Get debug flags from main process
     const flags = await window.electronAPI.getFlags();
@@ -719,16 +725,9 @@ async function initializeApp() {
       return;
     }
 
-    // Check if certificates exist
-    const certsExist = await window.electronAPI.certificatesExist();
-
-    if (!certsExist) {
-      throw new Error('Device certificates not found. Please provision this device first.');
-    }
-
-    updateStatus('loading', 'Loading certificates...');
-
-    // Initialize API client (in main process)
+    // Initialize API client (in main process). Loads stored device
+    // credentials or legacy certificate files; never fails just because the
+    // booth has not been paired yet.
     const initResult = await window.electronAPI.apiInitialize();
     if (!initResult.success) {
       throw new Error(`API initialization failed: ${initResult.error}`);
@@ -736,12 +735,25 @@ async function initializeApp() {
 
     updateStatus('loading', 'Checking network connection...');
 
-    // Check connectivity
+    // Check connectivity FIRST: an unpaired booth still needs WiFi before it
+    // can show a pairing code.
     const connResult = await window.electronAPI.apiCheckConnectivity();
     if (!connResult.isOnline) {
       // Show WiFi setup screen
       showScreen('wifi');
       await initializeWiFiSetup();
+      return;
+    }
+
+    // Not paired yet (no stored credentials, no certificate)? Show the
+    // Smart-TV style pairing screen and come back here once approved.
+    const authStatus = await window.electronAPI.apiGetAuthStatus();
+    console.log('[RENDERER] Auth status:', authStatus.mode, authStatus.paired ? `(equipment ${authStatus.equipment_id})` : '');
+    const forcePair = flags.forcePair && !state.pairingForcedOnce;
+    if (!authStatus.paired || forcePair) {
+      state.pairingForcedOnce = true;
+      showScreen('pairing');
+      await startPairingFlow();
       return;
     }
 
@@ -879,6 +891,158 @@ async function initializeApp() {
 
     showError('Initialization failed', error.message, error);
   }
+}
+
+// =============================================================================
+// Device Pairing (Smart-TV style)
+// =============================================================================
+//
+// The booth asks the backend for a short code, shows it with a QR code that
+// opens <dashboard>/pair?code=XXXX-XXXX, and polls until an operator has
+// logged in on their phone and linked this booth to their hub. The secret
+// device_code lives in the main process; the renderer only ever sees the
+// user-facing code.
+
+function stopPairingPolling() {
+  if (state.pairingPollTimer) {
+    clearTimeout(state.pairingPollTimer);
+    state.pairingPollTimer = null;
+  }
+  state.pairingActive = false;
+}
+
+function renderPairingQr(url) {
+  if (!elements.pairingQr) return;
+  elements.pairingQr.innerHTML = '';
+  if (typeof QRCodeStyling === 'undefined') {
+    elements.pairingQr.textContent = url;
+    return;
+  }
+  const qr = new QRCodeStyling({
+    type: 'canvas',
+    shape: 'square',
+    width: 320,
+    height: 320,
+    data: url,
+    margin: 0,
+    qrOptions: { typeNumber: '0', mode: 'Byte', errorCorrectionLevel: 'M' },
+    dotsOptions: { type: 'rounded', color: '#000000', roundSize: true },
+    cornersSquareOptions: { type: 'extra-rounded', color: '#000000' },
+    backgroundOptions: { color: '#ffffff' }
+  });
+  qr.append(elements.pairingQr);
+}
+
+async function startPairingFlow() {
+  stopPairingPolling();
+  state.pairingActive = true;
+
+  if (elements.pairingEnv) {
+    const flags = await window.electronAPI.getFlags();
+    elements.pairingEnv.style.display = flags.isStaging ? 'block' : 'none';
+  }
+
+  elements.pairingStatus.textContent = 'Requesting code…';
+  elements.pairingCode.textContent = '····-····';
+  elements.pairingUrl.textContent = '';
+  if (elements.pairingQr) elements.pairingQr.innerHTML = '';
+
+  let pairing;
+  try {
+    pairing = await window.electronAPI.pairingStart();
+  } catch (error) {
+    console.error('[PAIRING] Failed to start pairing:', error);
+    if (!state.pairingActive) return;
+    if (isNetworkError(error)) {
+      elements.pairingStatus.textContent = 'No connection — retrying…';
+    } else {
+      elements.pairingStatus.textContent = `Could not get a code (${error.message}). Retrying…`;
+    }
+    state.pairingPollTimer = setTimeout(startPairingFlow, 8000);
+    return;
+  }
+
+  console.log('[PAIRING] Code', pairing.user_code, '→', pairing.verification_url_complete);
+  elements.pairingCode.textContent = pairing.user_code;
+  elements.pairingUrl.textContent = (pairing.verification_url || '').replace(/^https?:\/\//, '');
+  renderPairingQr(pairing.verification_url_complete || pairing.verification_url);
+  elements.pairingStatus.textContent = 'Waiting for approval on your phone…';
+
+  const intervalMs = Math.max(2000, (pairing.interval || 5) * 1000);
+  const expiresAt = Date.now() + (pairing.expires_in || 600) * 1000;
+
+  const poll = async () => {
+    if (!state.pairingActive) return;
+
+    if (Date.now() > expiresAt) {
+      console.log('[PAIRING] Code expired locally, requesting a new one');
+      startPairingFlow();
+      return;
+    }
+
+    let result;
+    try {
+      result = await window.electronAPI.pairingPoll();
+    } catch (error) {
+      console.warn('[PAIRING] Poll failed:', error.message);
+      elements.pairingStatus.textContent = 'Connection hiccup — still waiting…';
+      state.pairingPollTimer = setTimeout(poll, intervalMs);
+      return;
+    }
+
+    if (!state.pairingActive) return;
+
+    switch (result.status) {
+      case 'approved':
+        console.log('[PAIRING] Approved:', result.device);
+        stopPairingPolling();
+        state.deviceConfig = result.device;
+        elements.pairingStatus.textContent = `Connected as ${result.device.equipment_name || 'booth'} — starting…`;
+        // Give the operator a moment to read the confirmation, then boot normally
+        setTimeout(() => {
+          // Leave via the loading screen so the usual fade/flow applies
+          showScreen('loading');
+          initializeApp();
+        }, 1500);
+        return;
+
+      case 'pending':
+        elements.pairingStatus.textContent = 'Waiting for approval on your phone…';
+        state.pairingPollTimer = setTimeout(poll, result.slow_down ? intervalMs * 2 : intervalMs);
+        return;
+
+      case 'expired':
+      case 'not_found':
+      case 'claimed':
+      case 'denied':
+      case 'not_started':
+        console.log('[PAIRING] Code', result.status, '— requesting a new one');
+        elements.pairingStatus.textContent = 'Code expired — getting a new one…';
+        state.pairingPollTimer = setTimeout(startPairingFlow, 1500);
+        return;
+
+      default:
+        console.warn('[PAIRING] Unexpected poll result:', result);
+        elements.pairingStatus.textContent = `Pairing error: ${result.error || result.status}. Retrying…`;
+        state.pairingPollTimer = setTimeout(startPairingFlow, 8000);
+        return;
+    }
+  };
+
+  state.pairingPollTimer = setTimeout(poll, intervalMs);
+}
+
+// Stored credentials stopped working (device revoked / re-paired elsewhere):
+// drop everything and go back to the pairing screen.
+function handleAuthInvalid(reason) {
+  console.warn('[RENDERER] Device credentials invalid:', reason);
+  if (state.screen === 'pairing' && state.pairingActive) return;
+  if (configPollingInterval) {
+    clearInterval(configPollingInterval);
+    configPollingInterval = null;
+  }
+  showScreen('pairing');
+  startPairingFlow();
 }
 
 // =============================================================================
@@ -3490,6 +3654,11 @@ window.addEventListener('DOMContentLoaded', () => {
 
   initializeApp();
 });
+
+// Main process reports that the stored device credentials no longer work
+if (window.electronAPI.onAuthInvalid) {
+  window.electronAPI.onAuthInvalid((reason) => handleAuthInvalid(reason));
+}
 
 // Handle online/offline events
 window.addEventListener('online', () => {

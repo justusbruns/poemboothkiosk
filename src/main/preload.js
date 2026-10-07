@@ -16,6 +16,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiCheckConnectivity: () => ipcRenderer.invoke('api:check-connectivity'),
   apiRegisterDevice: () => ipcRenderer.invoke('api:register-device'),
   apiGetConfig: () => ipcRenderer.invoke('api:get-config'),
+  apiGetAuthStatus: () => ipcRenderer.invoke('api:get-auth-status'),
+
+  // Device pairing (Smart-TV style: code + QR on screen, approve on phone)
+  pairingStart: () => ipcRenderer.invoke('pairing:start'),
+  pairingPoll: () => ipcRenderer.invoke('pairing:poll'),
+  pairingReset: () => ipcRenderer.invoke('pairing:reset'),
+  onAuthInvalid: (callback) => ipcRenderer.on('auth:invalid', (event, reason) => callback(reason)),
   apiGenerateContent: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-content', photoDataUrl, metadata),
   apiGeneratePoem: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-poem', photoDataUrl, metadata), // DEPRECATED
   apiUploadImage: (imageBuffer, sessionId) => ipcRenderer.invoke('api:upload-image', imageBuffer, sessionId),

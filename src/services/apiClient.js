@@ -1,9 +1,19 @@
-// API Client with Certificate-Based Authentication
+// API Client
+//
+// Two ways a kiosk can authenticate against the backend:
+//   1. device_token  - a Supabase session for the booth's own device user,
+//                      obtained through the Smart-TV style pairing flow
+//                      (/api/device-auth/*) and persisted via CredentialStore.
+//   2. certificate   - legacy pre-provisioned X.509 certificate files in
+//                      C:\ProgramData\PoemBooth (sent base64 as Bearer).
+// Stored device credentials win; the certificate is only a fallback for
+// booths that were provisioned the old way.
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
 const certificatePinning = require('../lib/certificatePinning');
+const CredentialStore = require('./credentialStore');
 
 // Certificate paths (platform-specific)
 const CERT_PATHS = {
@@ -12,10 +22,20 @@ const CERT_PATHS = {
   darwin: '/Library/Application Support/PoemBooth'
 };
 
+// Refresh the access token this long before it expires
+const TOKEN_REFRESH_MARGIN_MS = 2 * 60 * 1000;
+
 class ApiClient {
-  constructor() {
+  /**
+   * @param {object} [options]
+   * @param {string} [options.appVersion]        reported in User-Agent / device_info
+   * @param {object} [options.credentialStore]   injectable for tests
+   * @param {function} [options.onAuthInvalid]   called when stored credentials stop working
+   */
+  constructor(options = {}) {
     // Check for staging mode via command line argument
     const IS_STAGING = process.argv.includes('--staging');
+    this.envName = IS_STAGING ? 'staging' : 'production';
 
     this.baseUrl = IS_STAGING
       ? 'https://poemboothbooking-git-staging-justus-bruns-projects.vercel.app'
@@ -24,9 +44,18 @@ class ApiClient {
     console.log('[API] Backend URL:', this.baseUrl);
     console.log('[API] Staging mode:', IS_STAGING);
 
+    this.appVersion = options.appVersion || '1.0.0';
+    this.onAuthInvalid = typeof options.onAuthInvalid === 'function' ? options.onAuthInvalid : null;
+    this.credentialStore = options.credentialStore || new CredentialStore({ envName: this.envName });
+
+    // 'none' | 'device_token' | 'certificate'
+    this.authMode = 'none';
+    this.credentials = null;     // { access_token, refresh_token, expires_at, equipment_id, hub_id, ... }
+    this.pairing = null;         // in-flight pairing: { device_code, user_code, ... }
+    this.refreshPromise = null;  // de-duplicates concurrent refreshes
+
     this.certificate = null;
     this.certificateBase64 = null;
-    this.deviceToken = null;
     this.deviceInfo = null;
     this.requestCounter = 0; // Track sequential request numbers
     this.pinnedAgent = null; // HTTPS agent with certificate pinning
@@ -58,29 +87,15 @@ class ApiClient {
     return copy;
   }
 
-  // Initialize: Load certificates and prepare auth
+  // Initialize: load whatever credentials this device has and prepare the
+  // HTTPS agent. Never throws just because the device is not provisioned yet —
+  // the renderer asks getAuthStatus() and routes to the pairing screen.
   async initialize() {
     try {
       console.log('[API] Initializing API client...');
 
-      // Get platform-specific certificate paths
-      const basePath = CERT_PATHS[process.platform];
-      const certPath = path.join(basePath, 'device.crt');
-      const keyPath = path.join(basePath, 'device.key');
-      const caPath = path.join(basePath, 'ca.crt');
-
-      // Read device certificate from filesystem
-      this.certificate = fs.readFileSync(certPath, 'utf8');
-      const certKey = fs.readFileSync(keyPath, 'utf8');
-      const certCa = fs.readFileSync(caPath, 'utf8');
-
-      // Convert certificate to base64 for Authorization header
-      this.certificateBase64 = Buffer.from(this.certificate).toString('base64');
-
-      // Get system info for device registration
+      // Get system info for device registration / pairing
       this.deviceInfo = this.getSystemInfo();
-
-      console.log('[API] API client initialized');
       console.log('[API] Platform:', this.deviceInfo.platform);
       console.log('[API] Machine ID:', this.deviceInfo.machineId);
 
@@ -92,11 +107,249 @@ class ApiClient {
       );
       console.log('[API] Certificate pinning enabled for:', url.hostname);
 
+      // 1. Stored device credentials from a previous pairing
+      const stored = this.credentialStore.load();
+      if (stored) {
+        this.credentials = stored;
+        this.authMode = 'device_token';
+        console.log('[API] Auth mode: device_token (equipment', stored.equipment_id, ', hub', stored.hub_id, ')');
+        return true;
+      }
+
+      // 2. Legacy certificate files
+      try {
+        const basePath = CERT_PATHS[process.platform];
+        const certPath = path.join(basePath, 'device.crt');
+        const keyPath = path.join(basePath, 'device.key');
+        const caPath = path.join(basePath, 'ca.crt');
+
+        this.certificate = fs.readFileSync(certPath, 'utf8');
+        fs.readFileSync(keyPath, 'utf8');
+        fs.readFileSync(caPath, 'utf8');
+        this.certificateBase64 = Buffer.from(this.certificate).toString('base64');
+        this.authMode = 'certificate';
+        console.log('[API] Auth mode: certificate (legacy provisioning)');
+        return true;
+      } catch (certError) {
+        console.log('[API] No usable certificate files:', certError.code || certError.message);
+      }
+
+      this.authMode = 'none';
+      console.log('[API] Auth mode: none - device needs pairing');
       return true;
     } catch (error) {
       console.error('[API] Initialization error:', error);
       throw new Error(`Failed to initialize API client: ${error.message}`);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auth state
+  // ---------------------------------------------------------------------------
+
+  getAuthStatus() {
+    const c = this.credentials || {};
+    return {
+      mode: this.authMode,
+      paired: this.authMode !== 'none',
+      environment: this.envName,
+      equipment_id: c.equipment_id ?? null,
+      equipment_name: c.equipment_name ?? null,
+      hub_id: c.hub_id ?? null,
+      hub_name: c.hub_name ?? null,
+      device_id: c.device_id ?? null,
+      paired_at: c.paired_at ?? null
+    };
+  }
+
+  authorizationHeader() {
+    if (this.authMode === 'device_token' && this.credentials?.access_token) {
+      return `Bearer ${this.credentials.access_token}`;
+    }
+    if (this.authMode === 'certificate' && this.certificateBase64) {
+      return `Bearer ${this.certificateBase64}`;
+    }
+    return null;
+  }
+
+  authHeaderDescription() {
+    if (this.authMode === 'device_token') return 'device token';
+    if (this.authMode === 'certificate') return 'certificate';
+    return 'NONE';
+  }
+
+  // Refresh the device session before the access token expires
+  async ensureFreshToken() {
+    if (this.authMode !== 'device_token' || !this.credentials) return;
+    const expiresAtMs = (Number(this.credentials.expires_at) || 0) * 1000;
+    if (expiresAtMs - Date.now() > TOKEN_REFRESH_MARGIN_MS) return;
+    await this.refreshSession();
+  }
+
+  async refreshSession() {
+    if (this.refreshPromise) return this.refreshPromise;
+    this.refreshPromise = (async () => {
+      const refreshToken = this.credentials?.refresh_token;
+      if (!refreshToken) throw new Error('No refresh token available');
+
+      console.log('[API] Refreshing device session...');
+      const { statusCode, json } = await this.rawRequest('POST', '/api/device-auth/refresh', {
+        refresh_token: refreshToken
+      }, { auth: false });
+
+      if (statusCode === 401 || !json?.access_token || !json?.refresh_token) {
+        console.error('[API] Device session refresh rejected (HTTP', statusCode, ')');
+        this.handleCredentialsInvalid('refresh_rejected');
+        throw new Error('Device credentials invalid - re-pairing required');
+      }
+      if (statusCode < 200 || statusCode >= 300) {
+        // Transient (5xx / network) - keep the old credentials and let the caller retry later
+        throw new Error(`Session refresh failed: HTTP ${statusCode}`);
+      }
+
+      this.credentials = {
+        ...this.credentials,
+        access_token: json.access_token,
+        refresh_token: json.refresh_token,
+        expires_at: json.expires_at,
+        device_id: json.device_id || this.credentials.device_id
+      };
+      this.credentialStore.save(this.credentials);
+      console.log('[API] Device session refreshed, expires at', new Date(json.expires_at * 1000).toISOString());
+    })();
+
+    try {
+      return await this.refreshPromise;
+    } finally {
+      this.refreshPromise = null;
+    }
+  }
+
+  handleCredentialsInvalid(reason) {
+    console.error('[API] Stored device credentials are no longer valid:', reason);
+    this.credentialStore.clear();
+    this.credentials = null;
+    this.authMode = 'none';
+    if (this.onAuthInvalid) {
+      try { this.onAuthInvalid(reason); } catch (e) { /* ignore */ }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Pairing (Smart-TV style device authorization)
+  // ---------------------------------------------------------------------------
+
+  // Ask the backend for a fresh pairing code. Returns what the renderer may
+  // show; the secret device_code stays in the main process.
+  async startPairing() {
+    const info = this.deviceInfo || this.getSystemInfo();
+    const { statusCode, json } = await this.rawRequest('POST', '/api/device-auth/start', {
+      device_info: {
+        hostname: info.hostname,
+        platform: info.platform,
+        app_version: this.appVersion,
+        mac: this.getPrimaryMac(),
+        serial: typeof info.machineId === 'string' ? info.machineId : undefined
+      }
+    }, { auth: false });
+
+    if (statusCode < 200 || statusCode >= 300 || !json?.device_code || !json?.user_code) {
+      throw new Error(`Failed to start pairing: HTTP ${statusCode} ${json?.error || ''}`.trim());
+    }
+
+    this.pairing = {
+      device_code: json.device_code,
+      user_code: json.user_code,
+      verification_url: json.verification_url,
+      verification_url_complete: json.verification_url_complete,
+      interval: Math.max(2, Number(json.interval) || 5),
+      expires_in: Number(json.expires_in) || 600,
+      started_at: Date.now()
+    };
+    console.log('[API] Pairing started, user code', json.user_code);
+
+    return {
+      user_code: this.pairing.user_code,
+      verification_url: this.pairing.verification_url,
+      verification_url_complete: this.pairing.verification_url_complete,
+      interval: this.pairing.interval,
+      expires_in: this.pairing.expires_in
+    };
+  }
+
+  // Poll once. Returns { status } or, once approved, { status: 'approved', device }.
+  async pollPairing() {
+    if (!this.pairing) {
+      return { status: 'not_started' };
+    }
+    const { statusCode, json } = await this.rawRequest('POST', '/api/device-auth/poll', {
+      device_code: this.pairing.device_code
+    }, { auth: false });
+
+    if (statusCode === 429) return { status: 'pending', slow_down: true };
+    if (statusCode < 200 || statusCode >= 300) {
+      return { status: 'error', error: json?.error || `HTTP ${statusCode}` };
+    }
+
+    const status = json?.status || 'error';
+    if (status !== 'approved') {
+      return { status, error: json?.error };
+    }
+
+    const eq = json.equipment || {};
+    this.credentials = {
+      access_token: json.access_token,
+      refresh_token: json.refresh_token,
+      expires_at: json.expires_at,
+      device_id: json.device_id,
+      equipment_id: eq.id,
+      equipment_name: eq.asset_tag,
+      hub_id: eq.hub_id || eq.hub?.id,
+      hub_name: eq.hub?.name,
+      hub_region: eq.hub?.region_code,
+      paired_at: new Date().toISOString()
+    };
+    this.credentialStore.save(this.credentials);
+    this.authMode = 'device_token';
+    this.pairing = null;
+    console.log('[API] Pairing approved - equipment', eq.asset_tag, 'in hub', eq.hub?.name);
+
+    return { status: 'approved', device: this.deviceFromCredentials() };
+  }
+
+  // Forget stored credentials (e.g. operator wants to re-pair the booth)
+  resetPairing() {
+    this.credentialStore.clear();
+    this.credentials = null;
+    this.pairing = null;
+    this.authMode = this.certificateBase64 ? 'certificate' : 'none';
+  }
+
+  deviceFromCredentials() {
+    const c = this.credentials || {};
+    return {
+      device_id: c.device_id,
+      equipment_id: c.equipment_id,
+      equipment_name: c.equipment_name,
+      hub_id: c.hub_id,
+      hub_name: c.hub_name,
+      hub_region: c.hub_region,
+      first_activation: c.paired_at
+    };
+  }
+
+  getPrimaryMac() {
+    try {
+      const ifaces = os.networkInterfaces();
+      for (const name in ifaces) {
+        for (const addr of ifaces[name]) {
+          if (!addr.internal && addr.family === 'IPv4' && addr.mac && addr.mac !== '00:00:00:00:00:00') {
+            return addr.mac;
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return undefined;
   }
 
   // Check network connectivity by attempting a TCP connection to the backend.
@@ -133,6 +386,18 @@ class ApiClient {
 
   // Register device with backend
   async registerDevice() {
+    // Paired devices are already known to the backend; the device user *is*
+    // the registration. /api/kiosk/config (called right after) is the
+    // authoritative check that the credentials still work.
+    if (this.authMode === 'device_token') {
+      console.log('[API] Device paired via device token - skipping certificate registration');
+      await this.ensureFreshToken();
+      return { success: true, device: this.deviceFromCredentials(), equipment: null };
+    }
+    if (this.authMode !== 'certificate') {
+      throw new Error('Device is not paired. Please pair this booth first.');
+    }
+
     try {
       console.log('[API] Registering device...');
 
@@ -186,11 +451,6 @@ class ApiClient {
       console.log('[API] Equipment:', response.equipment.asset_tag);
       console.log('[API] Hub:', response.equipment.hub.name);
 
-      // Store device token if provided
-      if (response.device_token) {
-        this.deviceToken = response.device_token;
-      }
-
       // Transform response to match expected format for compatibility
       const transformedResponse = {
         success: true,
@@ -219,8 +479,7 @@ class ApiClient {
   async getKioskConfig() {
     try {
       console.log('[API] Fetching kiosk configuration...');
-      console.log('[API] Device token:', this.deviceToken ? 'Set' : 'NOT SET');
-      console.log('[API] Certificate base64 length:', this.certificateBase64?.length || 0);
+      console.log('[API] Auth mode:', this.authMode);
 
       // Add cache-busting timestamp to force fresh data
       const timestamp = Date.now();
@@ -443,50 +702,86 @@ class ApiClient {
     });
   }
 
-  // Generic request method (using built-in https module)
-  async request(method, endpoint, body = null) {
+  // Authenticated JSON request. Refreshes the device session when needed and
+  // retries once after a 401; a second 401 means the credentials are dead.
+  async request(method, endpoint, body = null, _retry = false) {
+    if (this.authMode === 'none') {
+      throw new Error('Device is not paired - cannot call backend');
+    }
+    await this.ensureFreshToken().catch(err => {
+      console.warn('[API] Pre-request token refresh failed:', err.message);
+    });
+
+    const { statusCode, data } = await this.rawRequest(method, endpoint, body, { auth: true, parse: false });
+
+    if (statusCode === 401 && this.authMode === 'device_token') {
+      if (!_retry) {
+        console.warn('[API] 401 with device token - refreshing and retrying once');
+        await this.refreshSession(); // throws (and clears creds) if rejected
+        return this.request(method, endpoint, body, true);
+      }
+      this.handleCredentialsInvalid('401_after_refresh');
+      throw new Error(`HTTP 401: ${data}`);
+    }
+
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`HTTP ${statusCode}: ${data}`);
+    }
+
+    try {
+      return JSON.parse(data);
+    } catch (error) {
+      throw new Error(`Failed to parse response: ${error.message}`);
+    }
+  }
+
+  // Low-level HTTPS JSON request. Resolves with { statusCode, data, json }
+  // for any HTTP status; rejects only on network / pinning errors.
+  //   options.auth   attach the Authorization header (default true)
+  //   options.parse  try to JSON.parse the body into .json (default true)
+  async rawRequest(method, endpoint, body = null, options = {}) {
+    const withAuth = options.auth !== false;
+    const parse = options.parse !== false;
+
     return new Promise((resolve, reject) => {
       this.requestCounter++;
       const requestId = this.requestCounter;
 
       const url = new URL(`${this.baseUrl}${endpoint}`);
 
-      const options = {
+      const headers = {
+        'Content-Type': 'application/json',
+        'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`
+      };
+      const authHeader = withAuth ? this.authorizationHeader() : null;
+      if (authHeader) headers['Authorization'] = authHeader;
+
+      const reqOptions = {
         hostname: url.hostname,
         port: url.port || 443,
         path: url.pathname + url.search,
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.certificateBase64}`,
-          'User-Agent': `PoemBooth-Kiosk/${this.deviceInfo?.appVersion || '1.0.0'}`
-        },
+        headers,
         agent: this.pinnedAgent // Certificate pinning enabled
       };
 
-      // Add device token if available (for subsequent requests after registration)
-      if (this.deviceToken) {
-        options.headers['X-Device-Token'] = this.deviceToken;
-      }
-
       const bodyData = body ? JSON.stringify(body) : null;
       if (bodyData) {
-        options.headers['Content-Length'] = Buffer.byteLength(bodyData);
+        headers['Content-Length'] = Buffer.byteLength(bodyData);
       }
 
       // === SECURITY-HARDENED REQUEST LOGGING ===
       console.log(`[API] ========== REQUEST #${requestId} START ==========`);
       console.log(`[API] Method: ${method}`);
       console.log(`[API] Endpoint: ${endpoint}`);
-      console.log(`[API] Certificate in Authorization header: ${this.certificateBase64 ? 'YES' : 'NO'}`);
-      console.log(`[API] Device token present: ${this.deviceToken ? 'YES' : 'NO'}`);
-      // SECURITY: Request body completely redacted (may contain certificate, images, poems)
+      console.log(`[API] Authorization: ${authHeader ? this.authHeaderDescription() : 'none'}`);
+      // SECURITY: Request body completely redacted (may contain tokens, images, poems)
       if (bodyData) {
         console.log(`[API] Request body: ${this.redactPayload(bodyData)}`);
       }
       console.log(`[API] ========== REQUEST #${requestId} SENT ==========`);
 
-      const req = https.request(options, (res) => {
+      const req = https.request(reqOptions, (res) => {
         let data = '';
 
         res.on('data', (chunk) => {
@@ -498,7 +793,7 @@ class ApiClient {
           console.log(`[API] ========== RESPONSE #${requestId} RECEIVED ==========`);
           console.log(`[API] Status Code: ${res.statusCode}`);
           console.log(`[API] Response Body Length: ${data.length} chars`);
-          // SECURITY: Response body completely redacted (may contain guest data, poems, images)
+          // SECURITY: Response body completely redacted (may contain guest data, poems, images, tokens)
           console.log(`[API] Response: ${this.redactPayload(data)}`);
           console.log(`[API] ========== RESPONSE #${requestId} END ==========`);
 
@@ -513,20 +808,17 @@ class ApiClient {
             }
           }
 
-          try {
-            if (res.statusCode < 200 || res.statusCode >= 300) {
-              console.error(`[API] ❌ REQUEST #${requestId} FAILED - HTTP ${res.statusCode}`);
-              reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-              return;
-            }
-
-            const jsonData = JSON.parse(data);
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            console.error(`[API] ❌ REQUEST #${requestId} FAILED - HTTP ${res.statusCode}`);
+          } else {
             console.log(`[API] ✅ REQUEST #${requestId} SUCCESS`);
-            resolve(jsonData);
-          } catch (error) {
-            console.error(`[API] ❌ REQUEST #${requestId} PARSE ERROR:`, error.message);
-            reject(new Error(`Failed to parse response: ${error.message}`));
           }
+
+          let json = null;
+          if (parse && data) {
+            try { json = JSON.parse(data); } catch (e) { json = null; }
+          }
+          resolve({ statusCode: res.statusCode, data, json, headers: res.headers });
         });
       });
 
@@ -545,16 +837,33 @@ class ApiClient {
         }
       });
 
+      req.on('error', () => { /* handled above */ });
+      req.setTimeout(30000, () => req.destroy(new Error('Request timeout')));
+
       if (bodyData) {
         req.write(bodyData);
       }
 
       req.end();
+    }).then(result => {
+      if (result.statusCode === 401 && withAuth && this.authMode === 'device_token' && options.parse !== false) {
+        // Callers using rawRequest directly get the raw 401; request() handles retry.
+      }
+      return result;
     });
   }
 
   // Multipart form data request (using built-in https module)
   async requestMultipart(method, endpoint, formData) {
+    if (this.authMode === 'none') {
+      throw new Error('Device is not paired - cannot call backend');
+    }
+    // Multipart bodies are streamed and cannot be replayed, so make sure the
+    // token is fresh *before* sending instead of retrying after a 401.
+    await this.ensureFreshToken().catch(err => {
+      console.warn('[API] Pre-request token refresh failed:', err.message);
+    });
+
     return new Promise((resolve, reject) => {
       this.requestCounter++;
       const requestId = this.requestCounter;
@@ -562,14 +871,10 @@ class ApiClient {
       const url = new URL(`${this.baseUrl}${endpoint}`);
 
       const headers = {
-        'Authorization': `Bearer ${this.certificateBase64}`,
-        'User-Agent': `PoemBooth-Kiosk/${this.deviceInfo?.appVersion || '1.0.0'}`,
+        'Authorization': this.authorizationHeader(),
+        'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`,
         ...formData.getHeaders()
       };
-
-      if (this.deviceToken) {
-        headers['X-Device-Token'] = this.deviceToken;
-      }
 
       const options = {
         hostname: url.hostname,
@@ -585,13 +890,9 @@ class ApiClient {
       console.log(`[API] Method: ${method}`);
       console.log(`[API] Endpoint: ${endpoint}`);
       console.log(`[API] Full URL: ${this.baseUrl}${endpoint}`);
-      console.log(`[API] Certificate in Authorization header: ${this.certificateBase64 ? 'YES' : 'NO'}`);
-      console.log(`[API] Certificate length: ${this.certificateBase64?.length || 0} chars`);
-      console.log(`[API] Device token present: ${this.deviceToken ? 'YES' : 'NO'}`);
+      console.log(`[API] Authorization: ${this.authHeaderDescription()}`);
       console.log(`[API] Headers:`, JSON.stringify({
-        'Authorization': this.certificateBase64 ? `Bearer ${this.certificateBase64.substring(0, 20)}...` : 'MISSING',
         'User-Agent': headers['User-Agent'],
-        'X-Device-Token': this.deviceToken ? 'SET' : 'NOT SET',
         'Content-Type': headers['content-type'] || 'multipart/form-data'
       }, null, 2));
       console.log(`[API] ========== MULTIPART REQUEST #${requestId} SENT ==========`);
@@ -624,6 +925,11 @@ class ApiClient {
           }
 
           try {
+            if (res.statusCode === 401 && this.authMode === 'device_token') {
+              // Token was fresh a moment ago, so a 401 here means the device
+              // user is gone (revoked / re-paired elsewhere).
+              this.handleCredentialsInvalid('401_multipart');
+            }
             if (res.statusCode < 200 || res.statusCode >= 300) {
               console.error(`[API] ❌ MULTIPART REQUEST #${requestId} FAILED - HTTP ${res.statusCode}`);
               reject(new Error(`HTTP ${res.statusCode}: ${data}`));
@@ -663,11 +969,11 @@ class ApiClient {
   // Get system information
   getSystemInfo() {
     try {
-      // Try to get machine ID
+      // Try to get machine ID (sync variant - the async one returns a Promise)
       let machineid = 'unknown';
       try {
-        const { machineId } = require('node-machine-id');
-        machineid = machineId();
+        const { machineIdSync } = require('node-machine-id');
+        machineid = machineIdSync();
       } catch (e) {
         console.log('[API] node-machine-id not available, using hostname');
         machineid = os.hostname();
@@ -680,7 +986,7 @@ class ApiClient {
         cpuCount: os.cpus().length,
         totalMemory: os.totalmem(),
         freeMemory: os.freemem(),
-        appVersion: '1.0.0'
+        appVersion: this.appVersion
       };
     } catch (error) {
       console.error('[API] Error getting system info:', error);
@@ -688,7 +994,7 @@ class ApiClient {
         platform: process.platform,
         hostname: os.hostname(),
         machineId: 'unknown',
-        appVersion: '1.0.0'
+        appVersion: this.appVersion
       };
     }
   }

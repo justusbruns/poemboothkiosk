@@ -97,6 +97,69 @@ h1, h2, h3, h4, h5, h6, p {
   background: rgba(255, 255, 255, 0.2);
 }
 
+/* Device Pairing Screen */
+#pairing-screen {
+  background: #000000;
+}
+
+.pairing-content {
+  font-family: 'Inter', sans-serif;
+  text-align: center;
+  max-width: 820px;
+  padding: 0 2rem;
+}
+
+.pairing-content h1 {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+}
+
+.pairing-intro {
+  font-size: 1.4rem;
+  line-height: 1.5;
+  opacity: 0.85;
+  margin-bottom: 2.5rem;
+}
+
+.pairing-qr {
+  width: 360px;
+  height: 360px;
+  margin: 0 auto;
+  padding: 20px;
+  background: #ffffff;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pairing-qr canvas {
+  display: block;
+}
+
+.pairing-code {
+  font-family: 'Inter', monospace;
+  font-size: 5rem;
+  font-weight: 800;
+  letter-spacing: 0.25em;
+  margin: 2rem 0 0.5rem;
+  padding-left: 0.25em; /* visually centre despite trailing letter-spacing */
+}
+
+.pairing-url {
+  font-size: 1.3rem;
+  opacity: 0.7;
+  margin-bottom: 1rem;
+}
+
+.pairing-env {
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  letter-spacing: 0.3em;
+  opacity: 0.4;
+}
+
 /* Update Screen */
 #update-screen {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

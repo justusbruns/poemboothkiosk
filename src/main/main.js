@@ -83,6 +83,8 @@ const IS_STAGING = process.argv.includes('--staging');
 const FORCE_WIFI = process.argv.includes('--force-wifi');
 // Dev-only: force the terms notice on screen without flipping the backend flag
 const FORCE_TERMS = process.argv.includes('--force-terms');
+// Show the pairing screen even when credentials are stored (re-pair this booth)
+const FORCE_PAIR = process.argv.includes('--force-pair');
 // Mock printer: use in dev mode by default, unless --real-printer is specified
 const USE_MOCK_PRINTER = process.argv.includes('--mock-printer') ||
                          (IS_DEV && !process.argv.includes('--real-printer'));
@@ -523,7 +525,9 @@ ipcMain.handle('get-system-info', async () => {
 ipcMain.handle('get-flags', async () => {
   return {
     isDev: IS_DEV,
-    forceWifi: FORCE_WIFI
+    isStaging: IS_STAGING,
+    forceWifi: FORCE_WIFI,
+    forcePair: FORCE_PAIR
   };
 });
 
@@ -531,21 +535,53 @@ ipcMain.handle('get-flags', async () => {
 // IPC Handlers - API Client
 // =============================================================================
 
+// Build the API client once; stored device credentials / certificate files are
+// loaded in initialize(). When credentials stop working (revoked, re-paired
+// elsewhere) the client tells the renderer so it can show the pairing screen.
+function createApiClient() {
+  return new ApiClient({
+    appVersion: app.getVersion(),
+    onAuthInvalid: (reason) => {
+      console.warn('[MAIN] Device credentials invalid:', reason);
+      deviceConfig = null;
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('auth:invalid', reason);
+      }
+    }
+  });
+}
+
+async function ensureApiClient() {
+  if (!apiClient) {
+    apiClient = createApiClient();
+    await apiClient.initialize();
+  }
+  return apiClient;
+}
+
+// Start (or restart) the portal-print bridge: report printer status + poll
+// for print jobs. Safe to call repeatedly — stops any prior instance first.
+function startPrintJobService() {
+  if (printJobService) printJobService.stop();
+  printJobService = new PrintJobService({
+    apiClient,
+    getPrinterService: () => printerService
+  });
+  printJobService.start();
+}
+
 // Initialize API client
 ipcMain.handle('api:initialize', async () => {
   try {
     console.log('[MAIN] Initializing API client...');
-    apiClient = new ApiClient();
+    apiClient = createApiClient();
     await apiClient.initialize();
 
-    // Start portal-print bridge: report printer status + poll for print jobs.
-    // Safe to (re)create — stop any prior instance first.
-    if (printJobService) printJobService.stop();
-    printJobService = new PrintJobService({
-      apiClient,
-      getPrinterService: () => printerService
-    });
-    printJobService.start();
+    // Portal-print bridge needs working credentials; an unpaired booth starts
+    // it once pairing has been approved (see pairing:poll).
+    if (apiClient.getAuthStatus().paired) {
+      startPrintJobService();
+    }
 
     return { success: true };
   } catch (error) {
@@ -557,10 +593,7 @@ ipcMain.handle('api:initialize', async () => {
 // Check connectivity
 ipcMain.handle('api:check-connectivity', async () => {
   try {
-    if (!apiClient) {
-      apiClient = new ApiClient();
-      await apiClient.initialize();
-    }
+    await ensureApiClient();
     const isOnline = await apiClient.checkConnectivity();
     return { success: true, isOnline };
   } catch (error) {
@@ -573,10 +606,7 @@ ipcMain.handle('api:check-connectivity', async () => {
 ipcMain.handle('api:register-device', async () => {
   try {
     console.log('[MAIN] Registering device...');
-    if (!apiClient) {
-      apiClient = new ApiClient();
-      await apiClient.initialize();
-    }
+    await ensureApiClient();
     const response = await apiClient.registerDevice();
     deviceConfig = response.device;
     return response;
@@ -584,6 +614,44 @@ ipcMain.handle('api:register-device', async () => {
     console.error('[MAIN] Device registration error:', error);
     throw error;
   }
+});
+
+// Current auth state: { mode: 'none'|'device_token'|'certificate', paired, equipment_id, ... }
+ipcMain.handle('api:get-auth-status', async () => {
+  await ensureApiClient();
+  return apiClient.getAuthStatus();
+});
+
+// =============================================================================
+// IPC Handlers - Device Pairing
+// =============================================================================
+
+// Request a pairing code. Returns only what may be shown on screen; the
+// secret device_code never leaves the main process.
+ipcMain.handle('pairing:start', async () => {
+  await ensureApiClient();
+  return apiClient.startPairing();
+});
+
+// Poll once for approval. On approval the credentials are persisted and the
+// returned device summary becomes deviceConfig.
+ipcMain.handle('pairing:poll', async () => {
+  await ensureApiClient();
+  const result = await apiClient.pollPairing();
+  if (result.status === 'approved') {
+    deviceConfig = result.device;
+    startPrintJobService();
+  }
+  return result;
+});
+
+// Forget stored credentials so the booth pairs again on next start
+ipcMain.handle('pairing:reset', async () => {
+  await ensureApiClient();
+  apiClient.resetPairing();
+  deviceConfig = null;
+  if (printJobService) { printJobService.stop(); printJobService = null; }
+  return { success: true };
 });
 
 // Get kiosk config

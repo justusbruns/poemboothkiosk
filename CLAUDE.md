@@ -46,6 +46,7 @@ These flags can be combined with `electron .`:
 - `--mock-printer` — Force mock printer (default in dev mode)
 - `--real-printer` — Force real printer in dev mode
 - `--force-wifi` — Force WiFi setup screen
+- `--force-pair` — Show the device pairing screen even if credentials are stored (re-pair this booth)
 
 ## Architecture Overview
 
@@ -157,13 +158,14 @@ Devices must be provisioned BEFORE deployment using the setup script in the book
 ### State Machine
 
 ```
-[loading] → [wifi] → [booth] → [processing] → [result]
+[loading] → [wifi] → [pairing] → [booth] → [processing] → [result]
                 ↓         ↓                        ↓
               [error] ← ← ← ← ← ← ← ← ← ← ← ← ← ←
 ```
 
-**loading:** Certificate check, API initialization, device registration
+**loading:** API initialization (stored device credentials or legacy certificate), device registration
 **wifi:** QR code scanner for WiFi auto-setup (if no internet)
+**pairing:** Smart-TV style pairing when the booth has no credentials: shows a short code + QR (`<dashboard>/pair?code=…`); the operator logs in on their phone, picks/creates the booth, and the kiosk polls `/api/device-auth/poll` until approved. Credentials (Supabase device session) are stored encrypted in `userData/device-credentials.<env>.json` via `credentialStore.js`.
 **booth:** Main photo capture screen with countdown
 **processing:** AI poem generation + local rendering + upload (with progress)
 **result:** Display rendered image + QR code for download

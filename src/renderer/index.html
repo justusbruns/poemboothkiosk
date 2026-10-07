@@ -70,6 +70,19 @@
     </div>
   </div>
 
+  <!-- Device Pairing Screen (Smart-TV style: scan QR, log in on phone, confirm code) -->
+  <div id="pairing-screen" class="screen">
+    <div class="pairing-content">
+      <h1>Connect this booth</h1>
+      <p class="pairing-intro">Scan the QR code with your phone, log in to your Poem Booth account and confirm the code below.</p>
+      <div id="pairing-qr" class="pairing-qr"></div>
+      <div id="pairing-code" class="pairing-code">&middot;&middot;&middot;&middot;-&middot;&middot;&middot;&middot;</div>
+      <p id="pairing-url" class="pairing-url"></p>
+      <div class="status-message" id="pairing-status">Requesting code…</div>
+      <p id="pairing-env" class="pairing-env" style="display: none;">STAGING</p>
+    </div>
+  </div>
+
   <!-- Main Photo Booth Screen -->
   <div id="booth-screen" class="screen">
     <div class="booth-container">
