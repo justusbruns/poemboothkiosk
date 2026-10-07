@@ -1593,6 +1593,19 @@ async function getLocalizedCountdownData() {
   return data;
 }
 
+// Delay between the screen going white and the capture, so the lit camera frame has had
+// time to travel through the camera pipeline. Must stay well below the overlay's white hold.
+const FLASH_CAPTURE_DELAY_MS = 200;
+
+// Run fn when the camera delivers its next frame (timer fallback if the API is missing)
+function onNextVideoFrame(video, fn) {
+  if (video && typeof video.requestVideoFrameCallback === 'function') {
+    video.requestVideoFrameCallback(() => fn());
+  } else {
+    setTimeout(fn, 34);
+  }
+}
+
 // Flash the screen white and grab the camera frame while it is white. The overlay is a
 // plain DOM element with a CSS animation (cheap, GPU-composited), so the white is really
 // on screen at the moment of capture — unlike a Lottie flash layer, which can be skipped
@@ -1619,11 +1632,19 @@ function flashAndCapture() {
     setTimeout(finish, 1500);      // safety net if animationend never fires
   });
 
-  // Wait until the white overlay has actually been painted, then capture
+  // Wait until the white overlay has actually been painted, then give the camera time to
+  // see it: a webcam frame only reaches the <video> element ~100-200ms after it was exposed,
+  // so capturing right away grabs a frame from before the flash (an unlit face). The overlay
+  // holds full white for ~500ms, so FLASH_CAPTURE_DELAY_MS keeps us well inside the white;
+  // we then draw the next fresh camera frame rather than whatever is still in the element.
   const captured = new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => {
-      console.log('[RENDERER] Flash on screen — capturing photo');
-      capture().then(resolve);
+      setTimeout(() => {
+        onNextVideoFrame(elements.cameraVideo, () => {
+          console.log('[RENDERER] Flash on screen — capturing photo');
+          capture().then(resolve);
+        });
+      }, FLASH_CAPTURE_DELAY_MS);
     }));
   });
 
