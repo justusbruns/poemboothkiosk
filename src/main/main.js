@@ -188,10 +188,16 @@ async function createWindow() {
 
   // Pipe renderer console logs into main process (so they hit the file logger too)
   // Levels: 0=verbose, 1=info, 2=warning, 3=error
-  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+  // Electron >= 32 passes a details object ({ level: 'info'|'warning'|'error'|'debug', message });
+  // the positional (level, message) arguments are deprecated but still filled in.
+  mainWindow.webContents.on('console-message', (details, legacyLevel, legacyMessage) => {
+    const message = (details && typeof details.message === 'string') ? details.message : legacyMessage;
+    const level = (details && typeof details.level === 'string')
+      ? details.level
+      : (legacyLevel >= 3 ? 'error' : legacyLevel === 2 ? 'warning' : 'info');
     const tag = `[RENDERER] ${message}`;
-    if (level >= 3) console.error(tag);
-    else if (level === 2) console.warn(tag);
+    if (level === 'error') console.error(tag);
+    else if (level === 'warning') console.warn(tag);
     else console.log(tag);
   });
 

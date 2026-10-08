@@ -40,9 +40,9 @@
     "onoff": "^6.0.3"
   },
   "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
-    "electron": "^28.0.0",
-    "electron-builder": "^24.9.1"
+    "@electron/rebuild": "^4.2.1",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3"
   },
   "repository": {
     "type": "git",
@@ -85,5 +85,11 @@
       "owner": "justusbruns",
       "repo": "poemboothkiosk"
     }
+  },
+  "allowScripts": {
+    "electron@44.7.0": true,
+    "koffi@3.0.2": true,
+    "sharp@0.33.5": true,
+    "@electron/rebuild@4.2.1": true
   }
 }
