@@ -57,7 +57,8 @@
       "target": [
         "nsis",
         "zip"
-      ]
+      ],
+      "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": true,
@@ -66,7 +67,9 @@
       "createStartMenuShortcut": true,
       "perMachine": false,
       "packElevateHelper": false,
-      "allowElevation": false
+      "allowElevation": false,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
     },
     "files": [
       "src/**/*",

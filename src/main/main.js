@@ -140,6 +140,7 @@ async function createWindow() {
     frame: IS_DEV,
     skipTaskbar: !IS_DEV,
     autoHideMenuBar: true,
+    icon: path.join(__dirname, '../../assets/icon.ico'),
     webPreferences: {
       nodeIntegration: false,  // Changed to false for security
       contextIsolation: true,   // Changed to true for security
