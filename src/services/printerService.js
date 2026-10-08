@@ -121,6 +121,11 @@ class PrinterService {
     this.printWorker = null;                  // persistent PowerShell print worker (see PRINT_WORKER_PS1)
     this._workerStarting = null;              // in-flight worker spawn promise
     this._printQueue = Promise.resolve();     // serializes prints through the single worker
+    this.deviceWatcher = null;                // PowerShell WMI watcher: USB arrival/removal → immediate detect()
+    this._deviceChangeTimer = null;           // debounce for bursts of device-change events
+    this._deviceFollowUpTimer = null;         // second detect after an arrival (queue comes up later than the device)
+    this._watcherRestarts = 0;
+    this._destroyed = false;
   }
 
   /**
@@ -133,6 +138,8 @@ class PrinterService {
       // Warm the persistent print worker during boot so the first guest print doesn't
       // pay PowerShell cold-start (measured 20-30s on kiosk NUCs).
       this.ensurePrintWorker().catch(e => console.warn('[PRINTER] print worker warm-up failed:', e.message));
+      // React to USB plug/unplug within seconds instead of waiting for the 25 s heartbeat.
+      this.startDeviceWatcher();
       console.log('[PRINTER] Initialization complete. Available:', this.isAvailable, 'queue:', this.printerName);
       return this.isAvailable;
     } catch (error) {
@@ -1092,9 +1099,96 @@ class PrinterService {
   /**
    * Cleanup
    */
+  /**
+   * Watch Windows device-change events (USB arrival/removal) and re-run detect()
+   * right away. Without this the kiosk only noticed an unplugged or reconnected
+   * printer on the next 25 s status heartbeat, so the hold-to-print button stayed
+   * (or stayed hidden) for up to half a minute.
+   */
+  startDeviceWatcher() {
+    if (process.platform !== 'win32' || this.deviceWatcher || this._destroyed) return;
+    const { spawn } = require('child_process');
+
+    const script =
+      `$ErrorActionPreference = 'SilentlyContinue'\n` +
+      `Register-WmiEvent -Class Win32_DeviceChangeEvent -SourceIdentifier pbdev | Out-Null\n` +
+      `[Console]::Out.WriteLine('__WATCHER_READY__')\n` +
+      `while ($true) {\n` +
+      `  $e = Wait-Event -SourceIdentifier pbdev\n` +
+      `  if ($e) {\n` +
+      `    Remove-Event -EventIdentifier $e.EventIdentifier\n` +
+      `    [Console]::Out.WriteLine('DEVICECHANGE ' + $e.SourceEventArgs.NewEvent.EventType)\n` +
+      `  }\n` +
+      `}`;
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+
+    let child;
+    try {
+      child = spawn('powershell', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded], { windowsHide: true });
+    } catch (e) {
+      console.warn('[PRINTER] device watcher failed to start:', e.message);
+      return;
+    }
+    this.deviceWatcher = child;
+
+    let buffer = '';
+    child.stdout.on('data', (chunk) => {
+      buffer += chunk.toString();
+      let idx;
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (line === '__WATCHER_READY__') {
+          console.log('[PRINTER] USB device watcher ready');
+        } else if (line.startsWith('DEVICECHANGE')) {
+          this.onDeviceChange(line.split(' ')[1]);
+        }
+      }
+    });
+    child.stderr.on('data', () => { /* ignore CLIXML noise */ });
+    child.on('exit', (code) => {
+      if (this.deviceWatcher === child) this.deviceWatcher = null;
+      if (this._destroyed) return;
+      this._watcherRestarts += 1;
+      const delay = Math.min(60000, 5000 * this._watcherRestarts);
+      console.warn(`[PRINTER] USB device watcher exited (code ${code}); restarting in ${delay / 1000}s`);
+      setTimeout(() => this.startDeviceWatcher(), delay);
+    });
+  }
+
+  // EventType: 1 = config changed, 2 = device arrival, 3 = device removal, 4 = docking
+  onDeviceChange(eventType) {
+    if (this._destroyed) return;
+    console.log(`[PRINTER] USB device change (type ${eventType}) → re-detecting`);
+    clearTimeout(this._deviceChangeTimer);
+    clearTimeout(this._deviceFollowUpTimer);
+    const run = () => {
+      if (this.lastStatus === 'printing') return; // detect() skips mid-print anyway
+      this.detect().catch(e => console.warn('[PRINTER] detect after device change failed:', e.message));
+    };
+    // Devices enumerate in bursts; settle for 2 s, then look. A DNP printer answers
+    // cspstat only once its own firmware is up and the Windows queue can come up
+    // several seconds after the USB device (measured: online ~12 s after plug-in
+    // with a single 10 s follow-up), so look again at 5 s and 10 s.
+    this._deviceChangeTimer = setTimeout(run, 2000);
+    if (String(eventType) === '2') {
+      this._deviceFollowUpTimer = setTimeout(() => {
+        run();
+        this._deviceFollowUpTimer = setTimeout(run, 5000);
+      }, 5000);
+    }
+  }
+
   destroy() {
     console.log('[PRINTER] Cleaning up printer service...');
+    this._destroyed = true;
     this.statusCallback = null;
+    clearTimeout(this._deviceChangeTimer);
+    clearTimeout(this._deviceFollowUpTimer);
+    if (this.deviceWatcher) {
+      try { this.deviceWatcher.kill(); } catch (_) {}
+      this.deviceWatcher = null;
+    }
     if (this.printWorker) {
       try { this.printWorker.child.kill(); } catch (_) {}
       this.printWorker = null;
