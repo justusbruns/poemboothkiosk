@@ -120,6 +120,8 @@ let apiClient = null;
 let wifiService = null;
 let hardwareService = null;
 let printerService = null;
+let printerInitPromise = null;  // background printer initialisation (see createWindow)
+let printerReady = false;
 let updateService = null;
 let printJobService = null;
 
@@ -234,11 +236,17 @@ async function createWindow() {
   // Initialize hardware service (non-blocking)
   initializeHardware();
 
-  // Initialize printer service BEFORE loading renderer
-  // This ensures printer is detected before renderer queries status
-  await initializePrinter();
+  // Initialize the printer in the background. Awaiting it here used to keep the
+  // window black for ~12 s on a real booth (PowerShell worker + DNP supply read);
+  // the renderer asks for printer status via IPC and gets 'initializing' until
+  // the service is ready, then a 'printer:statusChange' push with the real state.
+  if (!printerInitPromise) {
+    printerInitPromise = initializePrinter().catch((e) => {
+      console.error('[MAIN] Printer init failed:', e);
+    });
+  }
 
-  // Load the app AFTER printer is initialized
+  // Load the app right away
   // Pass a preview flag to the renderer only when --force-terms is set (isolated; does not affect other behavior)
   if (FORCE_TERMS) {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'), { query: { forceTerms: '1' } });
@@ -412,6 +420,19 @@ async function initializePrinter() {
 
     if (!initialized) {
       console.warn('[MAIN] Printer not available - printing will be disabled');
+    }
+    printerReady = true;
+
+    // The renderer may already have asked for status while we were initializing
+    // (and got 'initializing'): push the real state once now.
+    try {
+      const status = await printerService.getStatus();
+      if (mainWindow && !mainWindow.isDestroyed() &&
+          mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send('printer:statusChange', status);
+      }
+    } catch (e) {
+      console.warn('[MAIN] Could not push initial printer status:', e.message);
     }
 
     // Set up status change callback to notify renderer
@@ -908,10 +929,10 @@ ipcMain.handle('printer:print', async (event, imageBuffer, options = {}) => {
 ipcMain.handle('printer:get-status', async () => {
   console.log('[MAIN] Printer status requested');
 
-  if (!printerService) {
+  if (!printerService || !printerReady) {
     return {
       available: false,
-      status: 'not_initialized',
+      status: printerService ? 'initializing' : 'not_initialized',
       printerName: 'Unknown'
     };
   }

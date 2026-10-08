@@ -367,31 +367,21 @@ async function initializeLottieAnimation() {
       throw new Error('Lottie container element missing');
     }
 
-    // Fetch animation data
-    console.log('[LOTTIE] Fetching animation data from ./assets/pb-animated-logo.json...');
-    console.log('[LOTTIE] Current location:', window.location.href);
-    console.log('[LOTTIE] Base URL:', window.location.origin);
-
-    let response, animationData;
-    try {
-      response = await fetch('./assets/pb-animated-logo.json');
-      console.log('[LOTTIE] Fetch response status:', response.status, response.statusText);
-      console.log('[LOTTIE] Response OK:', response.ok);
-      console.log('[LOTTIE] Response URL:', response.url);
-      console.log('[LOTTIE] Content-Type:', response.headers.get('content-type'));
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch animation: ${response.status} ${response.statusText}`);
+    // Fetch animation data once per session; later renders reuse the cached JSON
+    let animationData = processingAnimationData;
+    if (!animationData) {
+      try {
+        const response = await fetch('./assets/pb-animated-logo.json');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch animation: ${response.status} ${response.statusText}`);
+        }
+        animationData = await response.json();
+        processingAnimationData = animationData;
+        console.log('[LOTTIE] Processing animation loaded:', animationData.w, 'x', animationData.h);
+      } catch (fetchError) {
+        console.error('[LOTTIE] FETCH FAILED:', fetchError.message);
+        throw fetchError;
       }
-
-      animationData = await response.json();
-      console.log('[LOTTIE] Animation data loaded successfully, size:', JSON.stringify(animationData).length, 'chars');
-      console.log('[LOTTIE] Animation version:', animationData.v);
-      console.log('[LOTTIE] Animation dimensions:', animationData.w, 'x', animationData.h);
-    } catch (fetchError) {
-      console.error('[LOTTIE] FETCH FAILED:', fetchError.message);
-      console.error('[LOTTIE] Error type:', fetchError.name);
-      throw fetchError;
     }
 
     // Load and play animation with data
@@ -418,44 +408,6 @@ async function initializeLottieAnimation() {
         console.log('[LOTTIE] Animation complete but still processing - restarting');
         state.lottieAnimation.goToAndPlay(0, true);
       }
-    });
-
-    // Wait a moment for canvas to render, then verify it exists with retry logic
-    await new Promise((resolve) => {
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      function verifyCanvas() {
-        console.log('[LOTTIE] === CANVAS VERIFICATION START ===');
-        const canvas = elements.lottieContainer.querySelector('canvas');
-        if (canvas) {
-          console.log('[LOTTIE] ✅ CANVAS FOUND!');
-          console.log('[LOTTIE] Canvas width attribute:', canvas.width);
-          console.log('[LOTTIE] Canvas height attribute:', canvas.height);
-          console.log('[LOTTIE] Canvas computed width:', canvas.getBoundingClientRect().width);
-          console.log('[LOTTIE] Canvas computed height:', canvas.getBoundingClientRect().height);
-          console.log('[LOTTIE] Canvas style.display:', window.getComputedStyle(canvas).display);
-          console.log('[LOTTIE] Canvas style.visibility:', window.getComputedStyle(canvas).visibility);
-          console.log('[LOTTIE] Canvas style.opacity:', window.getComputedStyle(canvas).opacity);
-          console.log('[LOTTIE] === CANVAS VERIFICATION END ===');
-          resolve();
-        } else if (retryCount < maxRetries) {
-          retryCount++;
-          console.warn(`[LOTTIE] Canvas not ready, retry ${retryCount}/${maxRetries}...`);
-          console.log('[LOTTIE] Container innerHTML length:', elements.lottieContainer.innerHTML.length);
-          setTimeout(verifyCanvas, 100);
-        } else {
-          console.error('[LOTTIE] ❌ Canvas failed to appear after retries');
-          console.log('[LOTTIE] Container innerHTML length:', elements.lottieContainer.innerHTML.length);
-          console.log('[LOTTIE] Container innerHTML preview:', elements.lottieContainer.innerHTML.substring(0, 200));
-          console.log('[LOTTIE] Container computed width:', elements.lottieContainer.getBoundingClientRect().width);
-          console.log('[LOTTIE] Container computed height:', elements.lottieContainer.getBoundingClientRect().height);
-          console.log('[LOTTIE] === CANVAS VERIFICATION END ===');
-          resolve(); // Continue anyway to not block processing
-        }
-      }
-
-      setTimeout(verifyCanvas, 100);
     });
 
     console.log('[LOTTIE] ✅ Animation initialized and playing');
@@ -758,6 +710,78 @@ async function handleUpdateInstall() {
 // App Initialization
 // =============================================================================
 
+// Open the booth camera without waiting for anything else. Safe to call more
+// than once; the promise is kept so the booth can await it later.
+function startCameraEarly() {
+  if (state.cameraReady) return state.cameraReady;
+  if (state.cameraStream && state.cameraStream.active) {
+    state.cameraReady = Promise.resolve(true);
+    return state.cameraReady;
+  }
+  state.cameraReady = initializeCamera(elements.cameraVideo);
+  // Errors are surfaced where the camera is awaited (ensureCamera), not here
+  state.cameraReady.catch(() => {});
+  return state.cameraReady;
+}
+
+async function ensureCamera() {
+  // An in-flight initialisation must be awaited in full: initializeCamera sets
+  // state.cameraStream before the 4K switch and metadata are done.
+  if (!state.cameraReady && state.cameraStream && state.cameraStream.active) return true;
+  try {
+    return await startCameraEarly();
+  } catch (error) {
+    // One retry: a stream that failed early may have been a transient device busy
+    state.cameraReady = null;
+    console.warn('[CAMERA] Early camera start failed, retrying once:', error.message);
+    return initializeCamera(elements.cameraVideo);
+  }
+}
+
+// Check for updates after the booth is up. If one is available, wait until
+// the booth is idle (no capture/processing/result in progress) before
+// showing the update prompt, so a guest is never interrupted.
+function scheduleBackgroundUpdateCheck() {
+  if (state.updateCheckScheduled) return;
+  state.updateCheckScheduled = true;
+
+  setTimeout(async () => {
+    let updateResult;
+    try {
+      updateResult = await window.electronAPI.updateCheck();
+    } catch (error) {
+      console.warn('[UPDATE] Background update check failed:', error.message);
+      return;
+    }
+
+    if (!updateResult || !updateResult.available || !updateResult.info) {
+      console.log('[RENDERER] No update available, current version:', updateResult && updateResult.currentVersion);
+      return;
+    }
+
+    console.log('[RENDERER] Update available:', updateResult.info.version, '— waiting for an idle booth');
+    state.updateAvailable = true;
+    state.updateInfo = updateResult.info;
+
+    const tryPrompt = async () => {
+      const idle = state.screen === 'booth' && !state.isProcessing && !state.isCapturing && !state.glassWiping;
+      if (!idle) {
+        setTimeout(tryPrompt, 5000);
+        return;
+      }
+      const shouldUpdate = await showUpdateScreen(updateResult.currentVersion, updateResult.info.version);
+      if (shouldUpdate) {
+        await handleUpdateInstall();
+        return; // App restarts after install
+      }
+      console.log('[RENDERER] User skipped update, continuing...');
+      await window.electronAPI.updateSkip();
+      showScreen('booth');
+    };
+    tryPrompt();
+  }, 3000);
+}
+
 // Detect whether an error is caused by lack of network/internet (vs a real
 // application error). Used to route to the WiFi setup screen instead of the
 // red error screen. Note: errors crossing the IPC boundary lose their .code,
@@ -803,6 +827,11 @@ async function initializeApp() {
     console.log('[RENDERER] Auth status:', authStatus.mode, authStatus.paired ? `(equipment ${authStatus.equipment_id})` : '');
     const forcePair = flags.forcePair && !state.pairingForcedOnce;
     const needsSetup = !authStatus.paired || forcePair;
+
+    // A paired booth is going to need the camera; open it now, in parallel
+    // with the network steps below, instead of after them (the 4K switch
+    // alone takes ~3.5 s). Setup flows (WiFi/pairing) share this stream.
+    if (!needsSetup) startCameraEarly();
 
     // First-boot setup, step 1: language (NL/EN) for the setup screens.
     // Paired booths take their language from the backend config instead.
@@ -866,33 +895,9 @@ async function initializeApp() {
       applySetupText();
     }
 
-    // Pre-install the active booking's venue WiFi as a saved profile (no switch)
-    await applyBookingWifi(state.kioskConfig);
-
-    // Check for updates before proceeding
-    updateStatus('loading', 'Checking for updates...');
-    const updateResult = await window.electronAPI.updateCheck();
-
-    if (updateResult.available && updateResult.info) {
-      console.log('[RENDERER] Update available:', updateResult.info.version);
-      state.updateAvailable = true;
-      state.updateInfo = updateResult.info;
-
-      // Show update screen and wait for user decision
-      const shouldUpdate = await showUpdateScreen(updateResult.currentVersion, updateResult.info.version);
-
-      if (shouldUpdate) {
-        // User chose to install - download and install
-        await handleUpdateInstall();
-        return; // App will restart after install
-      } else {
-        // User chose to skip
-        console.log('[RENDERER] User skipped update, continuing...');
-        await window.electronAPI.updateSkip();
-      }
-    } else {
-      console.log('[RENDERER] No update available, current version:', updateResult.currentVersion);
-    }
+    // Pre-install the active booking's venue WiFi as a saved profile (no switch).
+    // Not awaited: it is a netsh call that has nothing to do with showing the booth.
+    applyBookingWifi(state.kioskConfig).catch((e) => console.warn('[CONFIG] Booking WiFi install failed:', e.message));
 
     // Load camera rotation from config
     state.cameraRotation = state.kioskConfig.camera_rotation || 0;
@@ -952,21 +957,28 @@ async function initializeApp() {
 
     updateStatus('loading', 'Initializing camera...');
 
-    // Initialize camera
-    await initializeCamera(elements.cameraVideo);
+    // Camera: started early (see above); wait for it and apply the rotation
+    // that only became known with the config.
+    await ensureCamera();
+    applyCameraRotation(elements.cameraVideo);
 
     // Show the real capture resolution on the loading screen so a sub-par camera
     // setup is visible at a glance on the kiosk itself
     updateStatus('loading', `Starting kiosk... (camera ${formatCameraResolution()})`);
+    if (state.bootStartedAt) {
+      console.log(`[BOOT] page load → booth: ${Math.round(performance.now() - state.bootStartedAt)}ms`);
+    }
 
-    // Show main booth screen
-    setTimeout(() => {
-      showScreen('booth');
-      setupEventListeners();
+    // Show main booth screen (showScreen fades the loading screen out itself)
+    showScreen('booth');
+    setupEventListeners();
 
-      // Start periodic config polling (check every 2 minutes)
-      startConfigPolling();
-    }, 1000);
+    // Start periodic config polling (check every 2 minutes)
+    startConfigPolling();
+
+    // Updates are checked off the critical path; the prompt only appears
+    // while the booth is idle.
+    scheduleBackgroundUpdateCheck();
 
   } catch (error) {
     console.error('[RENDERER] Initialization error:', error);
@@ -1267,6 +1279,17 @@ async function applyBookingWifi(config) {
   }
 }
 
+// Detach the scanner video; stop the tracks only when the scanner opened its
+// own stream (never the shared booth camera stream).
+function releaseWifiScannerStream() {
+  if (!elements.wifiVideo || !elements.wifiVideo.srcObject) return;
+  if (state.wifiOwnStream) {
+    elements.wifiVideo.srcObject.getTracks().forEach(track => track.stop());
+  }
+  elements.wifiVideo.srcObject = null;
+  state.wifiOwnStream = false;
+}
+
 async function initializeWiFiSetup() {
   try {
     elements.wifiStatus.textContent = t('wifi.waiting');
@@ -1280,16 +1303,26 @@ async function initializeWiFiSetup() {
       clearTimeout(state.wifiScanInterval);
       state.wifiScanInterval = null;
     }
-    if (elements.wifiVideo.srcObject) {
-      elements.wifiVideo.srcObject.getTracks().forEach(track => track.stop());
-      elements.wifiVideo.srcObject = null;
-    }
+    releaseWifiScannerStream();
 
-    // Start camera for QR scanning
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    });
+    // The booth camera may already be running (it starts in parallel with the
+    // network checks on a paired booth). Reuse that stream rather than opening
+    // the same webcam a second time; otherwise open a modest stream of our own.
+    let stream = null;
+    if (state.cameraReady) {
+      try { await state.cameraReady; } catch (e) { /* fall through to own stream */ }
+    }
+    if (state.cameraStream && state.cameraStream.active) {
+      stream = state.cameraStream;
+      state.wifiOwnStream = false;
+      console.log('[WIFI] Reusing the booth camera stream for QR scanning');
+    } else {
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      state.wifiOwnStream = true;
+    }
 
     elements.wifiVideo.srcObject = stream;
 
@@ -1383,12 +1416,9 @@ async function handleWiFiQRDetected(qrData) {
 
     elements.wifiStatus.textContent = t('wifi.connected');
 
-    // Release the QR-scanning camera before continuing so it doesn't stay
-    // open behind the booth camera.
-    if (elements.wifiVideo.srcObject) {
-      elements.wifiVideo.srcObject.getTracks().forEach(track => track.stop());
-      elements.wifiVideo.srcObject = null;
-    }
+    // Release the QR-scanning camera before continuing (only if it was our own
+    // stream; a shared booth stream must keep running).
+    releaseWifiScannerStream();
 
     // Restart initialization now that we have connectivity
     await initializeApp();
@@ -1913,6 +1943,7 @@ function resetStyleCoverflow() {
 
 // Cache of the raw countdown animation data (loaded once, text localized per play)
 let countdownBaseData = null;
+let processingAnimationData = null; // cached ./assets/pb-animated-logo.json for the processing screen
 
 function loadJsonXHR(url) {
   return new Promise((resolve, reject) => {
@@ -4011,6 +4042,7 @@ function sleep(ms) {
 
 // Initialize on load
 window.addEventListener('DOMContentLoaded', () => {
+  state.bootStartedAt = performance.now();
   console.log('[RENDERER] DOM loaded, initializing app...');
   console.log('[RENDERER] electronAPI available:', !!window.electronAPI);
   console.log('[RENDERER] Camera video element:', !!elements.cameraVideo);
