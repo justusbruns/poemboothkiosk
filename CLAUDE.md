@@ -58,15 +58,23 @@ This is an **Electron app with strict process separation**:
 1. **Main Process** (`src/main/main.js`):
    - Manages window lifecycle and system integration
    - Handles all certificate I/O from platform-specific paths
-   - Hosts service classes (ApiClient, RenderingService, WiFiService)
+   - Hosts service classes (ApiClient, WiFiService, PrinterService, PrintJobService, UpdateService)
    - Exposes IPC handlers for renderer communication
    - Security: `nodeIntegration: false`, `contextIsolation: true`
 
-2. **Renderer Process** (`src/renderer/renderer.js`):
-   - UI logic and state management
-   - Camera access via browser APIs (getUserMedia)
-   - QR code scanning for WiFi setup
+2. **Renderer Process** (`src/renderer/`, ES modules, entry `app.js` loaded by `index.html`):
+   - UI logic and state management; camera via `getUserMedia`; QR scanning for WiFi setup
    - Communicates with main process via `window.electronAPI` (preload bridge)
+   - Module map (no bundler; every module exports its functions and imports what it uses):
+     - `app.js` — boot sequence (`initializeApp`: flags → API init → auth status → camera started early → connectivity → setup or register/config → booth), window-level listeners, background update check, `[BOOT]` timing line
+     - `state.js` — shared `state`, `screens`, `elements`
+     - `screens.js` — `showScreen` (loading fade), `screenHardware` claim/release for modal screens (update, language)
+     - `setup/text.js`, `setup/language.js`, `setup/wifi.js` (QR scanner, WiFi QR parsing, booking WiFi profile), `setup/pairing.js` (pairing screen, `handleAuthInvalid`)
+     - `booth/camera.js` (init, 4K switch, rotation, capture at ≤2048 px), `booth/capture.js` (countdown Lottie, flash, `handleCapture`), `booth/coverflow.js` (style cards, CTA rotation), `booth/badges.js` (price badge, terms notice, payment helpers), `booth/brand.js` (hub/PB branding), `booth/events.js` (`setupEventListeners`: hardware + keyboard + printer status, registered once)
+     - `generate.js` — `processPhoto`, stream event handler (`handleGenerateEvent`), poem/image result dispatch, toast
+     - `result/poem.js` (typing effect, font sizing, markdown), `result/qr.js` (QR, 30 s timer, return to booth), `result/print.js` (hold-to-print, print asset, printer status), `result/transitions.js` (wipe-out), `result/ui.js` (QR label, payment UI, camera background)
+     - `update.js` (update screen + install), `lottie.js` (loading/processing animations, loading text rotation), `ui.js` (status/progress/error/notification helpers), `debug.js` (dev panel), `config.js` (2-minute config polling)
+   - UI fonts (Inter, EB Garamond) are bundled under `fonts/`; no network needed to render any screen
 
 3. **Preload Script** (`src/main/preload.js`):
    - Security bridge between main and renderer
