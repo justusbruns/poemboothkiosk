@@ -101,6 +101,8 @@ const CERT_PATHS = {
 
 let mainWindow;
 let rendererCrashTimes = [];
+let windowRecreateTimes = [];   // kiosk-mode window recreations (bounded)
+let lastWindowCreatedAt = 0;
 let allowQuitForUpdate = false; // set right before the updater restarts us
 
 // Send to the renderer only while the window is alive
@@ -214,13 +216,27 @@ async function createWindow() {
   });
 
   // Production: a closed/destroyed window must never leave a windowless
-  // kiosk process behind — recreate it.
+  // kiosk process behind — recreate it. But an operator closing the window
+  // again right after it came back (or repeatedly) clearly wants out, so in
+  // that case quit instead of looping forever.
+  lastWindowCreatedAt = Date.now();
   mainWindow.on('closed', () => {
     mainWindow = null;
-    if (!IS_DEV && !allowQuitForUpdate) {
-      console.warn('[MAIN] Window closed in kiosk mode - recreating');
-      setTimeout(() => { if (!mainWindow) createWindow().catch(e => console.error('[MAIN] createWindow failed:', e)); }, 1000);
+    if (IS_DEV || allowQuitForUpdate) return;
+
+    const now = Date.now();
+    const closedRightAfterRecreate = windowRecreateTimes.length > 0 && now - lastWindowCreatedAt < 15000;
+    windowRecreateTimes = windowRecreateTimes.filter(t => now - t < 10 * 60 * 1000);
+    if (closedRightAfterRecreate || windowRecreateTimes.length >= 3) {
+      console.warn('[MAIN] Window closed again shortly after recreation - treating as intentional exit, quitting');
+      allowQuitForUpdate = true; // let before-quit through
+      app.quit();
+      return;
     }
+
+    windowRecreateTimes.push(now);
+    console.warn('[MAIN] Window closed in kiosk mode - recreating');
+    setTimeout(() => { if (!mainWindow) createWindow().catch(e => console.error('[MAIN] createWindow failed:', e)); }, 1000);
   });
   mainWindow.webContents.on('unresponsive', () => {
     console.error('[RENDERER] webContents became unresponsive');
