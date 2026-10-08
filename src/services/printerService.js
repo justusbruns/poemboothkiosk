@@ -389,20 +389,33 @@ class PrinterService {
    * Electron's exec() can inherit bash as shell on Windows (via Git Bash),
    * which strips $variable references from both inline commands and script files.
    */
-  async runPowerShell(script) {
-    const { exec } = require('child_process');
-    const { promisify } = require('util');
-    const execAsync = promisify(exec);
+  async runPowerShell(script, timeoutMs = 30000) {
+    const { execFile } = require('child_process');
 
     // Encode the script as UTF-16LE base64 for PowerShell's -EncodedCommand
     const encoded = Buffer.from(script, 'utf16le').toString('base64');
     // -WindowStyle Hidden + windowsHide:true prevent a PowerShell console window from
     // flashing in front of the fullscreen kiosk on every status/detect call (25s heartbeat).
-    const { stdout } = await execAsync(
-      `powershell -NoProfile -WindowStyle Hidden -EncodedCommand ${encoded}`,
-      { timeout: 10000, windowsHide: true }
-    );
-    return stdout;
+    // Get-CimInstance Win32_Printer + Get-PnpDevice take 4-5 s idle on the kiosk NUCs and
+    // well over 10 s while the machine is busy (4K camera, a print, an update download);
+    // the old 10 s timeout made the USB probe "fail" and flip the printer offline under load.
+    return new Promise((resolve, reject) => {
+      execFile(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', encoded],
+        { timeout: timeoutMs, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+        (error, stdout, stderr) => {
+          if (error) {
+            const why = error.killed || error.signal === 'SIGTERM'
+              ? `timed out after ${timeoutMs}ms`
+              : `exit ${error.code}${stderr && !String(stderr).startsWith('#< CLIXML') ? `: ${String(stderr).trim().slice(0, 300)}` : ''}`;
+            reject(new Error(`PowerShell ${why}`));
+            return;
+          }
+          resolve(stdout);
+        }
+      );
+    });
   }
 
   /**
