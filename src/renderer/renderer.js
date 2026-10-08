@@ -2299,9 +2299,12 @@ function handleGenerateEvent(evt) {
       state.currentPrintUrl = null;
       console.log(`[RENDERER] Generation started: session ${g.sessionId}, type ${g.type}, +${Date.now() - g.startedAt}ms`);
       if (g.type === 'poem') {
+        // Buffer the streamed tokens; the processing screen (photo + spinner)
+        // stays up until the whole poem is in. Typing only starts once the
+        // full text is known so the font size is computed exactly once —
+        // sizing provisionally while streaming made the text visibly jump.
         g.poemStream = { text: '', done: false };
         updateProgress('Writing your poem...', 40);
-        showPoemWithTypingEffect(g.poemStream);
       }
       break;
 
@@ -2316,6 +2319,9 @@ function handleGenerateEvent(evt) {
       }
       console.log(`[RENDERER] Poem complete (${g.poemStream ? g.poemStream.text.length : 0} chars), +${Date.now() - g.startedAt}ms`);
       updateProgress('Creating artwork...', 70);
+      if (g.poemStream && g.poemStream.text) {
+        showPoemWithTypingEffect(g.poemStream.text);
+      }
       break;
 
     case 'image_result':
