@@ -1,5 +1,8 @@
 // WiFi Service - WiFi connection (QR scanning lives in the renderer)
-const wifi = require('node-wifi');
+//
+// Windows is the production platform and is driven entirely through `netsh`
+// (argument arrays, never shell strings). Linux uses `nmcli`, macOS
+// `networksetup`; both are best-effort for development machines only.
 const { EventEmitter } = require('events');
 const { execFile } = require('child_process');
 const fs = require('fs');
@@ -9,8 +12,8 @@ const util = require('util');
 const execFileAsync = util.promisify(execFile);
 
 // SECURITY: SSIDs come straight from a camera-scanned QR code. They are only
-// ever passed to netsh as discrete arguments (never through a shell string),
-// and must look like a real SSID: 1-32 bytes, no control characters.
+// ever passed to netsh/nmcli as discrete arguments (never through a shell
+// string), and must look like a real SSID: 1-32 bytes, no control characters.
 function validateSsid(ssid) {
   if (typeof ssid !== 'string' || ssid.length === 0) {
     throw new Error('Invalid WiFi SSID');
@@ -34,25 +37,13 @@ function validatePassword(password) {
   return p;
 }
 
-// Run netsh with an argument array (no shell), hidden window, short timeout.
-function netsh(args) {
-  return execFileAsync('netsh', args, { windowsHide: true, timeout: 20000 });
+// Run a command with an argument array (no shell), hidden window, short timeout.
+function run(cmd, args, timeout = 20000) {
+  return execFileAsync(cmd, args, { windowsHide: true, timeout, maxBuffer: 1024 * 1024 });
 }
+const netsh = (args) => run('netsh', args);
 
 class WiFiService extends EventEmitter {
-  constructor() {
-    super();
-    this.scanning = false;
-    this.videoElement = null;
-    this.canvas = null;
-    this.scanInterval = null;
-
-    // Initialize node-wifi
-    wifi.init({
-      iface: null // Use default network interface
-    });
-  }
-
   // Parse WiFi QR code. Field order is NOT fixed (Android emits S;T;P, iOS
   // emits T;S;P), and values may contain backslash-escaped \\ \; \, \: \" —
   // so we parse order-independently and unescape rather than using a fixed regex.
@@ -149,13 +140,9 @@ class WiFiService extends EventEmitter {
     }
   }
 
-  // Connect on Windows via a netsh WLAN profile.
-  //
-  // We deliberately avoid node-wifi here because its Windows implementation
-  // first runs `netsh wlan show networks`, which requires Windows Location
-  // services to be enabled (otherwise it fails with "Access denied" / error 5).
-  // Adding a profile + connecting does NOT need Location services, so this
-  // works on a locked-down kiosk regardless of that privacy setting.
+  // Connect on Windows via a netsh WLAN profile. Adding a profile + connecting
+  // does not need Windows Location services (unlike `netsh wlan show networks`),
+  // so this works on a locked-down kiosk regardless of that privacy setting.
   async connectWindows(wifiConfig) {
     const ssid = validateSsid(wifiConfig.ssid);
     const password = validatePassword(wifiConfig.password);
@@ -283,28 +270,28 @@ class WiFiService extends EventEmitter {
 </WLANProfile>`;
   }
 
-  // Connect on Linux
+  // Connect on Linux (NetworkManager). Best-effort for dev / Pi.
   async connectLinux(wifiConfig) {
+    const ssid = validateSsid(wifiConfig.ssid);
+    const password = validatePassword(wifiConfig.password);
+    const args = ['dev', 'wifi', 'connect', ssid];
+    if (password) args.push('password', password);
     try {
-      await wifi.connect({
-        ssid: wifiConfig.ssid,
-        password: wifiConfig.password
-      });
+      await run('nmcli', args, 45000);
     } catch (error) {
-      console.error('[WIFI] Linux connection error:', error);
+      console.error('[WIFI] Linux connection error (nmcli):', error.message);
       throw error;
     }
   }
 
-  // Connect on macOS
+  // Connect on macOS (networksetup). Best-effort for dev machines.
   async connectMacOS(wifiConfig) {
+    const ssid = validateSsid(wifiConfig.ssid);
+    const password = validatePassword(wifiConfig.password);
     try {
-      await wifi.connect({
-        ssid: wifiConfig.ssid,
-        password: wifiConfig.password
-      });
+      await run('networksetup', ['-setairportnetwork', 'en0', ssid, password], 45000);
     } catch (error) {
-      console.error('[WIFI] macOS connection error:', error);
+      console.error('[WIFI] macOS connection error (networksetup):', error.message);
       throw error;
     }
   }
@@ -317,7 +304,8 @@ class WiFiService extends EventEmitter {
       try {
         const response = await fetch('https://www.google.com', {
           method: 'HEAD',
-          cache: 'no-cache'
+          cache: 'no-cache',
+          signal: AbortSignal.timeout(5000)
         });
 
         if (response.ok) {
@@ -334,52 +322,67 @@ class WiFiService extends EventEmitter {
     throw new Error('Internet connection timeout');
   }
 
-  // Get current WiFi network
+  // Current WiFi network: { ssid, signal } or null. Windows parses
+  // `netsh wlan show interfaces`; Linux asks nmcli; macOS is not supported.
   async getCurrentNetwork() {
     try {
-      const connections = await wifi.getCurrentConnections();
-      if (connections.length > 0) {
-        console.log('[WIFI] Current network:', connections[0].ssid);
-        return connections[0];
+      if (process.platform === 'win32') {
+        const { stdout } = await netsh(['wlan', 'show', 'interfaces']);
+        const ssid = (stdout.match(/^\s*SSID\s*:\s*(.+)$/m) || [])[1];
+        const signal = (stdout.match(/^\s*Signal\s*:\s*(\d+)%/m) || [])[1];
+        const state = (stdout.match(/^\s*State\s*:\s*(.+)$/m) || [])[1];
+        if (!ssid || !/connected/i.test(state || '')) return null;
+        return { ssid: ssid.trim(), signal: signal ? Number(signal) : null };
       }
+      if (process.platform === 'linux') {
+        const { stdout } = await run('nmcli', ['-t', '-f', 'active,ssid,signal', 'dev', 'wifi']);
+        const line = stdout.split('\n').find(l => l.startsWith('yes:'));
+        if (!line) return null;
+        const [, ssid, signal] = line.split(':');
+        return { ssid, signal: signal ? Number(signal) : null };
+      }
+      console.log('[WIFI] getCurrentNetwork not supported on', process.platform);
       return null;
     } catch (error) {
-      console.error('[WIFI] Get current network error:', error);
+      console.error('[WIFI] Get current network error:', error.message);
       return null;
     }
   }
 
-  // Scan for available networks
+  // Scan for networks: [{ ssid, signal }]. Note: on Windows this needs
+  // Location services enabled, which kiosks usually have off — expect [].
   async scanNetworks() {
     try {
-      console.log('[WIFI] Scanning for networks...');
-      const networks = await wifi.scan();
-      console.log('[WIFI] Found', networks.length, 'networks');
-      return networks;
-    } catch (error) {
-      console.error('[WIFI] Network scan error:', error);
+      if (process.platform === 'win32') {
+        const { stdout } = await netsh(['wlan', 'show', 'networks', 'mode=bssid']);
+        const networks = [];
+        let current = null;
+        for (const line of stdout.split('\n')) {
+          const ssid = line.match(/^\s*SSID\s+\d+\s*:\s*(.*)$/);
+          if (ssid) { current = { ssid: ssid[1].trim(), signal: null }; networks.push(current); continue; }
+          const signal = line.match(/^\s*Signal\s*:\s*(\d+)%/);
+          if (signal && current && current.signal === null) current.signal = Number(signal[1]);
+        }
+        console.log('[WIFI] Found', networks.length, 'networks');
+        return networks;
+      }
+      if (process.platform === 'linux') {
+        const { stdout } = await run('nmcli', ['-t', '-f', 'ssid,signal', 'dev', 'wifi']);
+        return stdout.split('\n').filter(Boolean).map(l => {
+          const [ssid, signal] = l.split(':');
+          return { ssid, signal: signal ? Number(signal) : null };
+        });
+      }
+      console.log('[WIFI] scanNetworks not supported on', process.platform);
       return [];
-    }
-  }
-
-  // Stop QR scanning
-  stopScanning() {
-    console.log('[WIFI] Stopping QR scanner...');
-    this.scanning = false;
-
-    if (this.scanInterval) {
-      clearTimeout(this.scanInterval);
-      this.scanInterval = null;
-    }
-
-    if (this.videoElement && this.videoElement.srcObject) {
-      this.videoElement.srcObject.getTracks().forEach(track => track.stop());
+    } catch (error) {
+      console.error('[WIFI] Network scan error:', error.message);
+      return [];
     }
   }
 
   // Cleanup
   destroy() {
-    this.stopScanning();
     this.removeAllListeners();
   }
 }

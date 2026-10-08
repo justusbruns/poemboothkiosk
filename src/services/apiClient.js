@@ -512,9 +512,9 @@ class ApiClient {
 
     console.log('[API] Generating content (streaming)...');
 
-    const FormData = require('form-data');
+    // Native (undici) FormData: photoBlob is a Buffer from the main process
     const formData = new FormData();
-    formData.append('photo', photoBlob, { filename: 'photo.jpg', contentType: 'image/jpeg' });
+    formData.append('photo', new Blob([photoBlob], { type: 'image/jpeg' }), 'photo.jpg');
     formData.append('equipment_id', String(metadata.equipment_id));
     formData.append('hub_id', String(metadata.hub_id));
     formData.append('stream', '1');
@@ -939,83 +939,84 @@ class ApiClient {
 
     const timeoutMs = options.timeoutMs || 60000;
 
-    return new Promise((resolve, reject) => {
-      this.requestCounter++;
-      const requestId = this.requestCounter;
-      const startedAt = Date.now();
+    this.requestCounter++;
+    const requestId = this.requestCounter;
+    const startedAt = Date.now();
+    const url = `${this.baseUrl}${endpoint}`;
 
-      const url = new URL(`${this.baseUrl}${endpoint}`);
+    const headers = {
+      'Authorization': this.authorizationHeader(),
+      'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`
+    };
+    if (options.accept) headers['Accept'] = options.accept;
 
-      const headers = {
-        'Authorization': this.authorizationHeader(),
-        'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`,
-        ...formData.getHeaders()
-      };
-      if (options.accept) headers['Accept'] = options.accept;
+    console.log(`[API] #${requestId} ${method} ${endpoint} (multipart, auth: ${this.authHeaderDescription()})`);
 
-      const reqOptions = {
-        hostname: url.hostname,
-        port: url.port || 443,
-        path: url.pathname + url.search,
-        method,
-        headers,
-        agent: this.httpsAgent
-      };
+    // Inactivity timeout: reset on every body chunk, so a long poem stream
+    // stays alive as long as the backend keeps sending.
+    const controller = new AbortController();
+    let timer = null;
+    const arm = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(new Error(`Request timeout after ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
+    };
+    arm();
 
-      console.log(`[API] #${requestId} ${method} ${endpoint} (multipart, auth: ${this.authHeaderDescription()})`);
+    let res;
+    try {
+      // Native fetch (undici): streams the multipart body and the response
+      res = await fetch(url, { method, headers, body: formData, signal: controller.signal });
+    } catch (error) {
+      clearTimeout(timer);
+      const err = (controller.signal.aborted && controller.signal.reason) || error;
+      console.error(`[API] #${requestId} ❌ NETWORK ERROR [${method} ${endpoint}]:`, err.message);
+      throw err;
+    }
 
-      let settled = false;
-      const fail = (error) => {
-        if (settled) return;
-        settled = true;
-        reject(error);
-      };
+    // Plain-object headers so onChunk/callers can read res.headers['content-type']
+    const resHeaders = {};
+    res.headers.forEach((v, k) => { resHeaders[k] = v; });
+    const resLike = { statusCode: res.status, headers: resHeaders };
 
-      const req = https.request(reqOptions, (res) => {
-        let data = '';
-        res.setEncoding('utf8');
+    let data = '';
+    try {
+      const decoder = new TextDecoder('utf-8');
+      for await (const bytes of res.body) {
+        arm();
+        const chunk = decoder.decode(bytes, { stream: true });
+        if (!chunk) continue;
+        data += chunk;
+        if (options.onChunk) {
+          try { options.onChunk(chunk, resLike); } catch (e) { console.warn('[API] onChunk handler error:', e.message); }
+        }
+      }
+      const tail = decoder.decode();
+      if (tail) {
+        data += tail;
+        if (options.onChunk) {
+          try { options.onChunk(tail, resLike); } catch (e) { /* ignore */ }
+        }
+      }
+    } catch (error) {
+      const err = (controller.signal.aborted && controller.signal.reason) || error;
+      console.error(`[API] #${requestId} ❌ stream error [${method} ${endpoint}]:`, err.message);
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
-        res.on('data', (chunk) => {
-          data += chunk;
-          if (options.onChunk) {
-            try { options.onChunk(chunk, res); } catch (e) { console.warn('[API] onChunk handler error:', e.message); }
-          }
-        });
+    const ms = Date.now() - startedAt;
+    const ok = res.status >= 200 && res.status < 300;
+    // SECURITY: never log the body - it contains the caption/poem about the guest and image data
+    (ok ? console.log : console.error)(`[API] #${requestId} ${ok ? '✅' : '❌'} HTTP ${res.status} in ${ms}ms (${data.length} chars)`);
 
-        res.on('aborted', () => fail(new Error('Response aborted')));
+    if (res.status === 401 && this.authMode === 'device_token') {
+      // Token was fresh a moment ago, so a 401 here means the device
+      // user is gone (revoked / re-paired elsewhere).
+      this.handleCredentialsInvalid('401_multipart');
+    }
 
-        res.on('end', () => {
-          if (settled) return;
-          settled = true;
-          const ms = Date.now() - startedAt;
-          const ok = res.statusCode >= 200 && res.statusCode < 300;
-          // SECURITY: never log the body - it contains the caption/poem about the guest and image data
-          (ok ? console.log : console.error)(`[API] #${requestId} ${ok ? '✅' : '❌'} HTTP ${res.statusCode} in ${ms}ms (${data.length} chars)`);
-
-          if (res.statusCode === 401 && this.authMode === 'device_token') {
-            // Token was fresh a moment ago, so a 401 here means the device
-            // user is gone (revoked / re-paired elsewhere).
-            this.handleCredentialsInvalid('401_multipart');
-          }
-
-          resolve({ statusCode: res.statusCode, headers: res.headers, data });
-        });
-      });
-
-      req.setTimeout(timeoutMs, () => {
-        console.error(`[API] #${requestId} ❌ timeout after ${timeoutMs}ms [${method} ${endpoint}]`);
-        req.destroy(new Error(`Request timeout after ${Math.round(timeoutMs / 1000)}s`));
-      });
-
-      req.on('error', (error) => {
-        console.error(`[API] #${requestId} ❌ NETWORK ERROR [${method} ${endpoint}]:`, error.message);
-        fail(error);
-      });
-
-      // Pipe formData to request
-      formData.on('error', fail);
-      formData.pipe(req);
-    });
+    return { statusCode: res.status, headers: resHeaders, data };
   }
 
   // JSON convenience wrapper around requestMultipart (non-streaming callers)
