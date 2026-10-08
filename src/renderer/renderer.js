@@ -4044,6 +4044,18 @@ function sleep(ms) {
 window.addEventListener('DOMContentLoaded', () => {
   state.bootStartedAt = performance.now();
   console.log('[RENDERER] DOM loaded, initializing app...');
+  // Warm the poem font (only used on the result screen) so the first poem never
+  // flashes in a fallback serif, then log which bundled faces are in use.
+  if (document.fonts) {
+    Promise.all([
+      document.fonts.load('400 16px "EB Garamond"'),
+      document.fonts.load('italic 400 16px "EB Garamond"'),
+      document.fonts.load('600 16px Inter')
+    ]).catch(() => {}).finally(() => {
+      const loaded = [...document.fonts].filter(f => f.status === 'loaded').map(f => `${f.family} ${f.style} ${f.weight}`);
+      console.log(`[FONTS] Inter ${document.fonts.check('600 16px Inter') ? 'ok' : 'MISSING'}, EB Garamond ${document.fonts.check('400 16px "EB Garamond"') ? 'ok' : 'MISSING'}; loaded: ${loaded.join('; ') || 'none'}`);
+    });
+  }
   console.log('[RENDERER] electronAPI available:', !!window.electronAPI);
   console.log('[RENDERER] Camera video element:', !!elements.cameraVideo);
 
