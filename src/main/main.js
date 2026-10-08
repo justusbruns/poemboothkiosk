@@ -2,16 +2,6 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-// Point Playwright at the Chromium folder bundled inside the installer via extraResources.
-// Must run BEFORE any module that imports 'playwright' — playwright reads this env var
-// the first time it's loaded.
-if (!app.isPackaged) {
-  // Dev mode: use the developer's local Playwright cache (default behavior, do nothing)
-} else {
-  process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.resourcesPath, 'ms-playwright');
-  console.log('[MAIN] Playwright browsers path (bundled):', process.env.PLAYWRIGHT_BROWSERS_PATH);
-}
-
 // === Persistent file logging ===
 // Mirror everything we console.log/warn/error to a file under userData so we can
 // debug remote kiosks. One file per session (async write stream) plus
@@ -84,7 +74,6 @@ process.on('uncaughtException', (error) => {
 
 // Import services (they run in main process)
 const ApiClient = require('../services/apiClient');
-const RenderingService = require('../services/renderingService');
 const WiFiService = require('../services/wifiService');
 const HardwareService = require('../services/hardwareService');
 const MockHardwareService = require('../services/mockHardwareService');
@@ -132,7 +121,6 @@ let kioskConfig = null;
 
 // Services (initialized when needed)
 let apiClient = null;
-let renderingService = null;
 let wifiService = null;
 let hardwareService = null;
 let printerService = null;
@@ -465,7 +453,7 @@ app.on('will-quit', async () => {
   }
 });
 
-// Kill all child processes (Playwright/Chromium) before update install
+// Kill child processes (printer PowerShell worker) before update install
 // Kill direct child processes (printer PowerShell worker etc.) before an
 // update install. Uses CIM via PowerShell: `wmic` no longer exists on current
 // Windows 11 builds, which made the old implementation fail on every update.
@@ -847,28 +835,6 @@ ipcMain.handle('api:log-print', async (event, sessionId) => {
   }
 });
 
-// =============================================================================
-// IPC Handlers - Rendering Service
-// =============================================================================
-
-// Render poem image
-ipcMain.handle('render:poem-image', async (event, photoDataUrl, poem, branding, options = {}) => {
-  try {
-    console.log('[MAIN] Rendering poem image, quality:', options.quality || 'standard');
-
-    if (!renderingService) {
-      renderingService = new RenderingService(branding || kioskConfig?.branding);
-    }
-
-    const imageBuffer = await renderingService.renderPoemImage(photoDataUrl, poem, branding, options);
-
-    // Return as ArrayBuffer for renderer
-    return imageBuffer;
-  } catch (error) {
-    console.error('[MAIN] Rendering error:', error);
-    throw error;
-  }
-});
 
 // =============================================================================
 // IPC Handlers - WiFi Service
@@ -1085,18 +1051,8 @@ ipcMain.handle('update:install', async () => {
 
     // Phase 1: Gracefully close services that hold child processes
     console.log('[MAIN] Phase 1: Closing services...');
-    if (renderingService) {
-      try {
-        await Promise.race([
-          renderingService.destroy(),
-          new Promise(resolve => setTimeout(resolve, 3000))
-        ]);
-      } catch (e) {
-        console.warn('[MAIN] renderingService.destroy() failed:', e.message);
-      }
-    }
 
-    // Force-kill any remaining Chromium/Playwright child processes
+    // Force-kill any remaining child processes (printer PowerShell worker)
     killChildProcesses();
 
     if (hardwareService) {

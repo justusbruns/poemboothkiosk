@@ -30,9 +30,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiUploadImage: (imageBuffer, sessionId) => ipcRenderer.invoke('api:upload-image', imageBuffer, sessionId),
   apiLogPrint: (sessionId) => ipcRenderer.invoke('api:log-print', sessionId),
 
-  // Rendering Service
-  renderPoemImage: (photoDataUrl, poem, branding, options) => ipcRenderer.invoke('render:poem-image', photoDataUrl, poem, branding, options),
-
   // WiFi Service
   wifiConnect: (wifiConfig) => ipcRenderer.invoke('wifi:connect', wifiConfig),
   wifiInstallProfile: (wifiConfig) => ipcRenderer.invoke('wifi:install-profile', wifiConfig),

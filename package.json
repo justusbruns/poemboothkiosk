@@ -10,13 +10,13 @@
     "dev:real-printer": "electron . --dev --real-printer",
     "dev:staging": "electron . --dev --staging",
     "dev:staging-printer": "electron . --dev --staging --real-printer",
-    "build": "node scripts/prepare-build.js && electron-builder",
-    "build:win": "node scripts/prepare-build.js && electron-builder --win",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
     "release": "node scripts/release.js",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major",
-    "postinstall": "electron-builder install-app-deps && npx playwright install chromium"
+    "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [
     "electron",
@@ -31,15 +31,10 @@
   "dependencies": {
     "electron-updater": "^6.1.7",
     "form-data": "^4.0.0",
-    "jsqr": "^1.4.0",
     "koffi": "^3.0.2",
-    "node-fetch": "^2.7.0",
     "node-machine-id": "^1.1.12",
     "node-wifi": "^2.0.15",
-    "playwright": "1.56.1",
-    "qrcode": "^1.5.3",
-    "sharp": "^0.33.0",
-    "uuid": "^9.0.1"
+    "sharp": "^0.33.0"
   },
   "optionalDependencies": {
     "onoff": "^6.0.3"
@@ -84,12 +79,6 @@
       "node_modules/koffi/**",
       "node_modules/@koromix/**",
       "src/services/dnpSupplyReader.js"
-    ],
-    "extraResources": [
-      {
-        "from": "playwright-browsers",
-        "to": "ms-playwright"
-      }
     ],
     "publish": {
       "provider": "github",

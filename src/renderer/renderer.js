@@ -2203,55 +2203,17 @@ async function processPoemGeneration(response) {
     // Show poem text immediately with typing effect
     showPoemWithTypingEffect(poemText);
 
-    updateProgress('Creating artwork...', 60);
-
-    // === STEP 1: Render HIGH-QUALITY image for printing (300 DPI metadata) ===
-    const printImageBuffer = await window.electronAPI.renderPoemImage(
-      state.currentPhoto,
-      { text: poemText },
-      brandingTemplate,
-      { quality: 'hd' }
-    );
-
-    state.currentPrintBuffer = printImageBuffer;
-    console.log('[RENDERER] ✅ Print buffer created:', printImageBuffer.length, 'bytes',
-                '(' + (printImageBuffer.length / 1024 / 1024).toFixed(2) + ' MB)');
-
-    updateProgress('Optimizing for web...', 70);
-
-    // === STEP 2: Render image for backend upload (template DPI metadata) ===
-    const webImageBuffer = await window.electronAPI.renderPoemImage(
-      state.currentPhoto,
-      { text: poemText },
-      brandingTemplate,
-      { quality: 'standard' }
-    );
-
-    console.log('[RENDERER] ✅ Web buffer created:', webImageBuffer.length, 'bytes',
-                '(' + (webImageBuffer.length / 1024 / 1024).toFixed(2) + ' MB)');
-
-    updateProgress('Uploading image...', 80);
-
-    // Get quality from branding config
-    const quality = brandingConfig?.quality || 'standard';
-
-    // Upload web-optimized image to backend (via main process)
-    const uploadResponse = await window.electronAPI.apiUploadImage(
-      webImageBuffer,
-      sessionId,
-      quality
-    );
-
-    updateProgress('Complete!', 100);
-
-    // Reset processing state IMMEDIATELY (not inside setTimeout)
-    // This prevents race conditions where state remains true after function "completes"
+    // Rendering happens on the backend now (Fly.io renderer via the dashboard).
+    // A non-streaming backend may already include the result; the streaming
+    // flow delivers it as a separate 'render' event (see processPhoto).
+    state.currentPrintBuffer = null;
     state.isProcessing = false;
 
-    // Show QR code with slight delay for visual effect
-    setTimeout(() => {
-      showQRCode(uploadResponse.public_view_url || uploadResponse.public_url);
-    }, 500);
+    if (response.public_view_url) {
+      setTimeout(() => showQRCode(response.public_view_url), 500);
+    } else {
+      console.warn('[RENDERER] No rendered image/QR in generate response');
+    }
 
   } catch (error) {
     console.error('[RENDERER] Poem processing error:', error);
