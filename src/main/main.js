@@ -759,6 +759,41 @@ ipcMain.handle('api:get-config', async () => {
 });
 
 // Unified content generation (poems and images)
+// Backend-rendered print assets, keyed by session id (small LRU). Filled by
+// the prefetch that runs as soon as the 'render' stream event arrives, so
+// hold-to-print never waits on a download.
+const printAssets = new Map();
+const PRINT_ASSET_CACHE_MAX = 3;
+
+async function fetchPrintAsset(sessionId, url) {
+  if (!sessionId || !url) return null;
+  const cached = printAssets.get(sessionId);
+  if (cached && cached.url === url) {
+    if (cached.buffer) return cached.buffer;
+    if (cached.promise) return cached.promise;
+  }
+  const entry = { url, buffer: null, promise: null };
+  entry.promise = (async () => {
+    const startedAt = Date.now();
+    const buffer = await apiClient.downloadImage(url);
+    entry.buffer = buffer;
+    entry.promise = null;
+    console.log(`[MAIN] Print asset ready for session ${sessionId}: ${(buffer.length / 1024).toFixed(0)} KB in ${Date.now() - startedAt}ms`);
+    return buffer;
+  })();
+  entry.promise.catch(err => {
+    console.error(`[MAIN] Print asset download failed for session ${sessionId}:`, err.message);
+    if (printAssets.get(sessionId) === entry) printAssets.delete(sessionId);
+  });
+  printAssets.set(sessionId, entry);
+  while (printAssets.size > PRINT_ASSET_CACHE_MAX) {
+    printAssets.delete(printAssets.keys().next().value);
+  }
+  return entry.promise;
+}
+
+// Generate content: streams NDJSON events from the backend to the renderer
+// ('generate:event') and resolves with the collected result when done.
 ipcMain.handle('api:generate-content', async (event, photoDataUrl, metadata) => {
   try {
     console.log('[MAIN] Generating content...');
@@ -769,12 +804,41 @@ ipcMain.handle('api:generate-content', async (event, photoDataUrl, metadata) => 
     // Convert data URL to buffer
     const base64Data = photoDataUrl.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
+    console.log(`[MAIN] Photo payload: ${(buffer.length / 1024).toFixed(0)} KB`);
 
-    const response = await apiClient.generateContent(buffer, metadata);
+    const onEvent = (evt) => {
+      sendToRenderer('generate:event', evt);
+      if (evt.type === 'render' && evt.print_image_url) {
+        fetchPrintAsset(evt.session_id || metadata.session_id || lastSessionId, evt.print_image_url)
+          .catch(() => { /* logged in fetchPrintAsset */ });
+      }
+      if (evt.type === 'start' && evt.session_id) lastSessionId = evt.session_id;
+    };
+    let lastSessionId = null;
+
+    const response = await apiClient.generateContent(buffer, metadata, onEvent);
     return response;
   } catch (error) {
     console.error('[MAIN] Content generation error:', error);
     throw error;
+  }
+});
+
+// Print the backend-rendered asset of a session (downloads it if the prefetch
+// has not finished or failed).
+ipcMain.handle('printer:print-session', async (event, sessionId, printImageUrl, options = {}) => {
+  if (!printerService) {
+    return { success: false, error: 'Printer service not initialized' };
+  }
+  try {
+    const buffer = await fetchPrintAsset(sessionId, printImageUrl);
+    if (!buffer) return { success: false, error: 'No print asset for this session' };
+    console.log(`[MAIN][PRINTER] Printing backend asset for session ${sessionId} (${(buffer.length / 1024).toFixed(0)} KB)`, options);
+    const ok = await printerService.print(buffer, options);
+    return ok ? { success: true } : { success: false, error: 'Print job failed' };
+  } catch (error) {
+    console.error('[MAIN][PRINTER] print-session error:', error);
+    return { success: false, error: error.message };
   }
 });
 

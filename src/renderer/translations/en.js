@@ -108,6 +108,7 @@ export const en = {
     pleaseTryAgain: 'Please try again',
     buttonTryAgain: 'Button: Try again',
     generationFailed: 'Oops! The image didn\'t generate quite right. Let\'s try another photo!',
-    processingFailed: 'Something didn\'t work this time. Press the button to try again!'
+    processingFailed: 'Something didn\'t work this time. Press the button to try again!',
+    renderFailed: 'Your poem is ready, but the picture could not be made. Try another photo for a download or print.'
   }
 };

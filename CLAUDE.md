@@ -7,16 +7,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is an **Electron-based kiosk application** for AI-powered photo booth experiences at events. The system uses **certificate-based authentication** for zero-touch device provisioning and secure backend communication.
 
 **Key Technology Stack:**
-- Electron 28.x (main + renderer processes with IPC bridge)
-- Sharp (server-side image processing)
-- Playwright (text rendering for poem overlays)
-- node-wifi (WiFi auto-configuration)
-- Certificate-based auth (X.509 certificates)
+- Electron (main + renderer processes with IPC bridge)
+- Sharp (printer image metadata + 2x6 strip layout only)
+- node-wifi / netsh (WiFi auto-configuration)
+- Device pairing (Supabase device session) with legacy X.509 certificate fallback
+
+The poem image is **rendered on the backend** (Fly.io renderer, called from `/api/kiosk/generate`). The kiosk does no image compositing and ships no browser engine.
 
 ## Development Commands
 
 ```bash
-# Install dependencies (includes Playwright Chromium ~500MB via postinstall)
+# Install dependencies (no browser download; electron-builder rebuilds native deps)
 npm install
 
 # Development mode (windowed, DevTools enabled, cursor visible)
@@ -76,14 +77,22 @@ This is an **Electron app with strict process separation**:
 All heavy services run in the **main process** to isolate privileged operations:
 
 **`apiClient.js`** - Backend communication:
-- Certificate-based authentication (`Authorization: Bearer {base64_cert}`)
-- Endpoints: `/api/devices/register`, `/api/kiosk/config`, `/api/kiosk/generate-poem`, `/api/kiosk/upload`
-- Backend URL: `https://book.poembooth.com`
+- Auth modes: `device_token` (paired, `Authorization: Bearer <supabase access token>`, auto-refresh via `/api/device-auth/refresh`), `certificate` (legacy `Bearer {base64_cert}`), `none` (needs pairing)
+- Endpoints: `/api/device-auth/*`, `/api/kiosk/config`, `/api/kiosk/generate` (streaming), `/api/kiosk/print-jobs`, `/api/kiosk/printer-status`
+- Backend URL: `https://book.poembooth.com` (`--staging` → Vercel staging deployment)
+- All requests have timeouts (30 s JSON, 60–90 s multipart); response bodies are never logged
 
-**`renderingService.js`** - Local image compositing:
-- Uses Sharp for image manipulation (filters, overlays, resizing)
-- Uses Playwright (headless Chromium) for text rendering with custom fonts/styling
-- Generates final branded poem image locally before upload
+**Generate stream** (`apiClient.generateContent` → IPC `generate:event` → renderer `handleGenerateEvent`):
+`POST /api/kiosk/generate` multipart (`photo` downscaled to ≤2048 px / q0.85, `equipment_id`, `hub_id`, `style_id`, `stream=1`) with `Accept: application/x-ndjson`. The backend answers with one JSON object per line:
+- `start` {session_id, booking_id, generation_type, caption} → result screen, typing starts
+- `poem_delta` {text} … → typed as they arrive; `poem_done` {poem, caption, metadata}
+- `image_result` {…same fields as the image JSON…} (image styles)
+- `render` {public_view_url, rendered_image_url, print_image_url, print_format, print_orientation, width, height} → QR shown, main prefetches the print asset
+- `render_error` {error} → poem stays, toast, no QR/print
+- `error` {error, code} (only after the stream opened; earlier failures are plain HTTP JSON errors) · `done`
+A plain JSON response (older backend) is converted into the same events by the client. The captured frame is already rotated by the kiosk, so `photo_rotation` is not sent.
+
+**`credentialStore.js`** - Pairing credentials (encrypted with `safeStorage`, per environment)
 
 **`wifiService.js`** - Network management:
 - Connects device to WiFi via QR code scan (standard WiFi QR format)
@@ -95,16 +104,13 @@ All heavy services run in the **main process** to isolate privileged operations:
 - Pico USB HID button sends Enter key events in production
 
 **`printerService.js`** - Printing:
-- Two-tier rendering: high-res (1200x1200px @ 300 DPI) for printing, web-optimized (template size @ 85%) for upload
-- Manages printer status and print jobs
+- Prints the backend's print asset (`print_image_url` from the `render` event, prefetched and cached in main; IPC `printer:print-session`) or, for image styles, the generated image buffer
+- Portal print jobs (`printJobService.js`) download `rendered_image_url` of the job
+- Manages printer status and supply telemetry
 
 **`cameraService.js`** - Camera capture:
 - Currently implemented inline in renderer using browser APIs
 - Uses `navigator.mediaDevices.getUserMedia`
-
-**`applyFilter.js`** / **`photoFilters.js`** - Photo filters:
-- 12 curated filter presets (Sharp-based: brightness, contrast, saturation)
-- Ported from TypeScript backend (`apply-filter.ts`, `photo-filters.ts`)
 
 **`mockPrinterService.js`** - Dev printer simulation:
 - Used by default in dev mode (override with `--real-printer`)
@@ -168,7 +174,7 @@ Devices must be provisioned BEFORE deployment using the setup script in the book
 **wifi:** QR code scanner for WiFi auto-setup (if no internet)
 **pairing:** Smart-TV style pairing when the booth has no credentials: shows a short code + QR (`<dashboard>/pair?code=…`); the operator logs in on their phone, picks/creates the booth, and the kiosk polls `/api/device-auth/poll` until approved. Credentials (Supabase device session) are stored encrypted in `userData/device-credentials.<env>.json` via `credentialStore.js`.
 **booth:** Main photo capture screen with countdown
-**processing:** AI poem generation + local rendering + upload (with progress)
+**processing:** photo upload; switches to `result` as soon as the stream's `start` event arrives
 **result:** Display rendered image + QR code for download
 **error:** Error screen with retry option
 
@@ -178,12 +184,11 @@ Devices must be provisioned BEFORE deployment using the setup script in the book
 2. 3-second countdown
 3. Photo captured via `getUserMedia` → canvas → data URL
 4. Preview shown (retake or confirm)
-5. After confirm:
-   - Send photo to backend via `/api/kiosk/generate-poem`
-   - Backend calls AI (Anthropic/OpenAI/Google) to generate poem
-   - Kiosk renders final image locally using Sharp + Playwright
-   - Upload rendered image to backend storage via `/api/kiosk/upload`
-   - Display result with QR code
+5. After capture:
+   - Send the (downscaled) photo to `/api/kiosk/generate` as an NDJSON stream request
+   - Backend calls AI (Anthropic/OpenAI/Google); the poem is streamed and typed on screen while it is written
+   - Backend renders the branded image on Fly.io, stores web + print versions, streams `render`
+   - Kiosk shows the QR code; main prefetches the print asset
 6. Guest scans QR or long-presses to print
 7. "Take Another Photo" to restart
 
@@ -236,7 +241,7 @@ Enable dev mode with `npm run dev` or `--dev` flag:
 ## Important Notes
 
 - This is a **kiosk application** - production mode is designed to run fullscreen and unattended
-- All AI processing happens on the **backend** - kiosk only does local rendering/compositing
+- All AI processing **and image rendering** happen on the backend; the kiosk only captures, streams the poem to the screen, shows the QR and prints
 - Devices are **pre-provisioned** in workshop before shipping to hubs
 - Hub managers only need to scan WiFi QR code - no manual configuration
 - Certificate validity: 3 years (plan renewal at 2.5 years)

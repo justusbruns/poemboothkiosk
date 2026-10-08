@@ -415,11 +415,11 @@ function validateResponseHeader(expectedFingerprint, responseHeaders) {
   const serverFingerprint = responseHeaders[headerName];
 
   if (!serverFingerprint) {
-    // Header not present - log warning but don't fail
-    // This is optional validation, not required
-    if (IS_DEV) {
-      console.warn(`${LOG_PREFIX} ${SECURITY_PREFIX} Backend did not send X-Server-Cert-Fingerprint header`);
-      console.warn(`${LOG_PREFIX} [DEV] This is optional validation - TLS pinning is primary security`);
+    // Header not present - optional validation, say so once per process
+    // instead of twice per request (the pollers run every 5 s).
+    if (IS_DEV && !validateResponseHeader._warnedMissing) {
+      validateResponseHeader._warnedMissing = true;
+      console.warn(`${LOG_PREFIX} ${SECURITY_PREFIX} Backend did not send X-Server-Cert-Fingerprint header (optional; TLS pinning is the primary check) - not repeating this warning`);
     }
     return true; // Don't fail - this is optional validation
   }

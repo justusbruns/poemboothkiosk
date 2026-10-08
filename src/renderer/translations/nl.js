@@ -108,6 +108,7 @@ export const nl = {
     pleaseTryAgain: 'Probeer het opnieuw',
     buttonTryAgain: 'Knop: Probeer opnieuw',
     generationFailed: 'Oeps! De afbeelding is niet helemaal goed gegenereerd. Laten we nog een foto proberen!',
-    processingFailed: 'Dit keer werkte het niet. Druk op de knop om het opnieuw te proberen!'
+    processingFailed: 'Dit keer werkte het niet. Druk op de knop om het opnieuw te proberen!',
+    renderFailed: 'Je gedicht is klaar, maar de afbeelding kon niet gemaakt worden. Probeer een nieuwe foto voor een download of print.'
   }
 };

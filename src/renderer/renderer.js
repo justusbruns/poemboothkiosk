@@ -2145,32 +2145,190 @@ async function processPhoto() {
       console.log('[RENDERER] Using selected style:', selectedStyle.name);
     }
 
-    // Call unified API to generate content (via main process)
-    console.log('[RENDERER] Calling API to generate content...');
-    const response = await window.electronAPI.apiGenerateContent(
-      state.currentPhoto,
-      metadata
-    );
+    // Upload a downscaled copy: the backend caption model downsamples anyway,
+    // and a 4K/q0.95 JPEG (~1.5 MB) was the single biggest avoidable delay.
+    const uploadPhoto = await downscalePhotoDataUrl(state.currentPhoto, 2048, 0.85);
 
-    // Detect content type from response
-    const generationType = response.generation_type || 'poem';
-    console.log('[RENDERER] Generation type:', generationType);
+    // Streaming generation: the main process forwards NDJSON events from the
+    // backend ('generate:event'); handleGenerateEvent drives the UI (poem
+    // typing while tokens arrive, QR when the backend render is ready).
+    state.generate = {
+      started: false, sessionId: null, type: null,
+      poemStream: null, render: null, renderError: null, done: false, startedAt: Date.now()
+    };
+    state.generateHandler = handleGenerateEvent;
 
-    // Dispatch to appropriate handler based on content type
-    if (generationType === 'image') {
-      await processImageGeneration(response);
-    } else if (generationType === 'poem') {
-      await processPoemGeneration(response);
-    } else {
-      console.error('[RENDERER] Unknown generation type:', generationType);
-      throw new Error(`Unsupported content type: ${generationType}`);
+    console.log('[RENDERER] Calling API to generate content (streaming)...');
+    let result;
+    try {
+      result = await window.electronAPI.apiGenerateContent(uploadPhoto, metadata);
+    } finally {
+      state.generateHandler = null;
+    }
+
+    const g = state.generate;
+    console.log('[RENDERER] Generation finished:', JSON.stringify({
+      type: g.type, started: g.started, render: !!g.render, renderError: g.renderError || null,
+      ms: Date.now() - g.startedAt
+    }));
+
+    // Defensive: if no stream events reached us (shouldn't happen - the API
+    // client synthesises them for non-streaming backends), use the result.
+    if (!g.started) {
+      if ((result.generation_type || 'poem') === 'image' && result.image) {
+        await processImageGeneration(result.image);
+      } else {
+        await processPoemGeneration({
+          session_id: result.session_id, poem: result.poem,
+          public_view_url: result.render && result.render.public_view_url
+        });
+      }
     }
 
   } catch (error) {
     console.error('[RENDERER] Process error:', error);
+    state.generateHandler = null;
     state.isProcessing = false;  // Explicit reset on error
     destroyLottieAnimation();    // Clean up animation
     showNotification(t('error.processingFailed'));
+  }
+}
+
+// Downscale a captured photo (data URL) for upload. Keeps the orientation that
+// capturePhoto already baked in. Returns the original on any failure.
+function downscalePhotoDataUrl(dataUrl, maxEdge = 2048, quality = 0.85) {
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+          if (scale >= 1 && quality >= 0.95) return resolve(dataUrl);
+          const w = Math.round(img.width * scale);
+          const h = Math.round(img.height * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.imageSmoothingQuality = 'high';
+          ctx.drawImage(img, 0, 0, w, h);
+          canvas.toBlob((blob) => {
+            if (!blob) return resolve(dataUrl);
+            const reader = new FileReader();
+            reader.onload = () => {
+              console.log(`[RENDERER] Upload photo: ${img.width}x${img.height} → ${w}x${h}, ${(blob.size / 1024).toFixed(0)} KB`);
+              resolve(reader.result);
+            };
+            reader.onerror = () => resolve(dataUrl);
+            reader.readAsDataURL(blob);
+          }, 'image/jpeg', quality);
+        } catch (e) {
+          console.warn('[RENDERER] Downscale failed, sending original:', e.message);
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    } catch (e) {
+      resolve(dataUrl);
+    }
+  });
+}
+
+// Non-blocking toast on the current screen (showNotification() returns the
+// guest to the booth, which is wrong when the poem is already on screen).
+let toastTimeout = null;
+function showToast(message, duration = 6000) {
+  if (!elements.notificationMessage) return;
+  if (toastTimeout) clearTimeout(toastTimeout);
+  elements.notificationMessage.textContent = message;
+  const toast = document.getElementById('notification-toast');
+  if (toast) {
+    toast.style.display = 'block';
+    toast.classList.add('show');
+  }
+  toastTimeout = setTimeout(() => {
+    if (toast) {
+      toast.classList.remove('show');
+      toast.style.display = 'none';
+    }
+  }, duration);
+}
+
+// Drive the UI from the backend's generation stream (see apiClient.generateContent)
+function handleGenerateEvent(evt) {
+  const g = state.generate;
+  if (!g || !evt) return;
+  switch (evt.type) {
+    case 'start':
+      g.started = true;
+      g.sessionId = evt.session_id || null;
+      g.type = evt.generation_type || 'poem';
+      state.currentSession = { id: g.sessionId };
+      state.currentPrintBuffer = null;
+      state.currentPrintUrl = null;
+      console.log(`[RENDERER] Generation started: session ${g.sessionId}, type ${g.type}, +${Date.now() - g.startedAt}ms`);
+      if (g.type === 'poem') {
+        g.poemStream = { text: '', done: false };
+        updateProgress('Writing your poem...', 40);
+        showPoemWithTypingEffect(g.poemStream);
+      }
+      break;
+
+    case 'poem_delta':
+      if (g.poemStream) g.poemStream.text += evt.text || '';
+      break;
+
+    case 'poem_done':
+      if (g.poemStream) {
+        if (typeof evt.poem === 'string' && evt.poem.length) g.poemStream.text = evt.poem;
+        g.poemStream.done = true;
+      }
+      console.log(`[RENDERER] Poem complete (${g.poemStream ? g.poemStream.text.length : 0} chars), +${Date.now() - g.startedAt}ms`);
+      updateProgress('Creating artwork...', 70);
+      break;
+
+    case 'image_result':
+      g.type = 'image';
+      processImageGeneration({ ...evt, session_id: evt.session_id || g.sessionId });
+      break;
+
+    case 'render':
+      g.render = evt;
+      state.currentPrintUrl = evt.print_image_url || evt.rendered_image_url || null;
+      state.currentPrintFormat = evt.print_format || state.currentPrintFormat || '4x6';
+      state.currentPrintOrientation = evt.print_orientation || state.currentPrintOrientation || 'portrait';
+      state.isProcessing = false;
+      updateProgress('Complete!', 100);
+      console.log(`[RENDERER] Render ready, QR + print asset available, +${Date.now() - g.startedAt}ms`);
+      updatePrintContainerVisibility();
+      setTimeout(() => showQRCode(evt.public_view_url), 300);
+      break;
+
+    case 'render_error':
+      g.renderError = evt.error || 'render failed';
+      state.isProcessing = false;
+      state.currentPrintUrl = null;
+      console.error('[RENDERER] Backend render failed:', g.renderError);
+      updatePrintContainerVisibility();
+      // Keep the poem on screen; just tell the guest there is no download/print
+      showToast(t('error.renderFailed'));
+      break;
+
+    case 'error':
+      g.error = evt.error || 'generation failed';
+      break; // the invoke rejects; processPhoto's catch handles it
+
+    case 'done':
+      g.done = true;
+      if (g.type === 'poem' && !g.render && !g.renderError) {
+        state.isProcessing = false;
+        console.warn('[RENDERER] Stream done without render result');
+      }
+      break;
+
+    default:
+      console.log('[RENDERER] Unhandled generate event:', evt.type);
   }
 }
 
@@ -2559,7 +2717,16 @@ function stripMarkdownMarkers(text) {
     .replace(/\*([^*\n]+)\*/g, '$1');
 }
 
-function showPoemWithTypingEffect(poemText) {
+// Accepts either the full poem text or a live stream object
+// { text, done } that the generation events keep appending to: typing runs
+// as far as the text goes, waits while more tokens arrive, and finishes
+// once done is set.
+function showPoemWithTypingEffect(poemTextOrStream) {
+  const stream = (poemTextOrStream && typeof poemTextOrStream === 'object')
+    ? poemTextOrStream
+    : { text: String(poemTextOrStream || ''), done: true };
+  const poemText = stream.text;
+
   // Cancel any existing typing animation to prevent race conditions
   cancelTypingAnimation();
 
@@ -2594,10 +2761,13 @@ function showPoemWithTypingEffect(poemText) {
   // Make sure the paid watermark from a previous image result isn't shown over a poem
   updateResultPaymentUI();
 
-  // Calculate and apply optimal font size based on the plain text (what's actually displayed)
-  const fontSize = calculatePoemFontSize(plainPoem);
+  // Calculate and apply optimal font size based on the plain text (what's actually displayed).
+  // For a live stream the final length is unknown: start from a typical poem length and
+  // settle on the real size once the full text is in.
+  let fontSizeSettled = stream.done;
+  const fontSize = calculatePoemFontSize(stream.done ? plainPoem : 'x'.repeat(320));
   elements.poemText.style.fontSize = fontSize;
-  console.log(`[RENDERER] Applied font size: ${fontSize}`);
+  console.log(`[RENDERER] Applied font size: ${fontSize}${stream.done ? '' : ' (provisional, streaming)'}`);
 
   // Adapt the QR label to the printer state (print & save vs save)
   updateResultActionLabel();
@@ -2615,9 +2785,35 @@ function showPoemWithTypingEffect(poemText) {
       return; // Abort - a new typing session has started
     }
 
-    if (charIndex < plainPoem.length) {
-      elements.poemText.textContent += plainPoem.charAt(charIndex);
-      const lastChar = plainPoem.charAt(charIndex);
+    // Streaming: re-read the (possibly grown) text every tick. Leave an unfinished
+    // trailing markdown marker untyped until the stream closes it or finishes.
+    let plain = plainPoem;
+    if (!stream.done || plain.length !== stripMarkdownMarkers(stream.text).length) {
+      plain = stripMarkdownMarkers(stream.text);
+      if (!stream.done) {
+        const tail = stream.text.slice(-2);
+        if (tail.endsWith('*')) plain = plain.slice(0, Math.max(0, plain.length - 1));
+      }
+    }
+
+    if (charIndex >= plain.length && !stream.done) {
+      // Caught up with the stream: wait for more tokens
+      state.typingTimeoutId = setTimeout(typeNextChar, 120);
+      return;
+    }
+
+    if (stream.done && !fontSizeSettled) {
+      fontSizeSettled = true;
+      const finalSize = calculatePoemFontSize(stripMarkdownMarkers(stream.text));
+      if (finalSize !== elements.poemText.style.fontSize) {
+        elements.poemText.style.fontSize = finalSize;
+        console.log(`[RENDERER] Final font size: ${finalSize}`);
+      }
+    }
+
+    if (charIndex < plain.length) {
+      elements.poemText.textContent += plain.charAt(charIndex);
+      const lastChar = plain.charAt(charIndex);
       charIndex++;
 
       // Calculate delay with human-like variation
@@ -2639,7 +2835,7 @@ function showPoemWithTypingEffect(poemText) {
       state.typingTimeoutId = setTimeout(typeNextChar, delay);
     } else {
       // Typing complete — swap plain text for markdown-formatted HTML so headings/bold/italic appear
-      elements.poemText.innerHTML = parseMarkdownPoem(poemText);
+      elements.poemText.innerHTML = parseMarkdownPoem(stream.text);
       elements.poemText.classList.add('typing-complete');
       state.typingTimeoutId = null;
     }
@@ -3294,8 +3490,8 @@ async function handlePrint() {
       state.isPrinting = false;
       return;
     }
-    if (!state.currentPrintBuffer) {
-      console.error('[RENDERER] ❌ No print buffer available');
+    if (!state.currentPrintBuffer && !state.currentPrintUrl) {
+      console.error('[RENDERER] ❌ No print image available (no local buffer, no backend asset)');
       updatePrinterStatus({ available: false, status: 'error', message: 'No image to print' });
       resetPrintCircleIdle();
       state.isPrinting = false;
@@ -3337,10 +3533,15 @@ async function handlePrint() {
     // the checkmark *after* it succeeds (a checkmark mid-print would imply "done").
     updatePrinterStatus({ available: true, status: 'printing', message: 'Printing...' });
 
-    const result = await window.electronAPI.printerPrint(state.currentPrintBuffer, {
+    const printOptions = {
       printFormat: state.currentPrintFormat,
       printOrientation: state.currentPrintOrientation
-    });
+    };
+    // Poems: backend-rendered print asset (prefetched by main when the render
+    // event arrived). Image styles still carry their buffer locally.
+    const result = state.currentPrintUrl
+      ? await window.electronAPI.printerPrintSession(state.currentSession.id, state.currentPrintUrl, printOptions)
+      : await window.electronAPI.printerPrint(state.currentPrintBuffer, printOptions);
     console.log('[RENDERER] Print IPC returned:', JSON.stringify(result));
 
     if (result.success) {
@@ -3788,6 +3989,12 @@ window.addEventListener('DOMContentLoaded', () => {
 if (window.electronAPI.onAuthInvalid) {
   window.electronAPI.onAuthInvalid((reason) => handleAuthInvalid(reason));
 }
+
+// Generation stream events from the backend (via main) - registered once,
+// routed to the handler of the generation in progress.
+window.electronAPI.onGenerateEvent((evt) => {
+  if (state.generateHandler) state.generateHandler(evt);
+});
 
 // Knob/button for the modal setup screens (update, language) - registered once,
 // routed to whichever screen has claimed them (see claimScreenHardware).

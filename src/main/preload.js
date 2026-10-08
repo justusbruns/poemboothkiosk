@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setupSetLanguage: (language) => ipcRenderer.invoke('setup:set-language', language),
   onAuthInvalid: (callback) => ipcRenderer.on('auth:invalid', (event, reason) => callback(reason)),
   apiGenerateContent: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-content', photoDataUrl, metadata),
+  onGenerateEvent: (callback) => ipcRenderer.on('generate:event', (event, evt) => callback(evt)),
+  printerPrintSession: (sessionId, printImageUrl, options) => ipcRenderer.invoke('printer:print-session', sessionId, printImageUrl, options),
   apiGeneratePoem: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-poem', photoDataUrl, metadata), // DEPRECATED
   apiUploadImage: (imageBuffer, sessionId) => ipcRenderer.invoke('api:upload-image', imageBuffer, sessionId),
   apiLogPrint: (sessionId) => ipcRenderer.invoke('api:log-print', sessionId),

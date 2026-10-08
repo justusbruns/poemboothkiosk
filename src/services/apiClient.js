@@ -501,61 +501,172 @@ class ApiClient {
     }
   }
 
-  // Generate content (unified method for both poem and image generation)
-  async generateContent(photoBlob, metadata) {
-    try {
-      console.log('[API] Generating content...');
+  // Generate content for a photo. Streams NDJSON events from the backend
+  // (poem text token by token, then the backend-rendered image) and forwards
+  // each one to onEvent(evt). Falls back to the classic JSON response (older
+  // backend) by synthesising the same events. Resolves with the collected
+  // result once the stream is done.
+  //
+  // Events: start | poem_delta | poem_done | image_result | render |
+  //         render_error | error | done   (see CLAUDE.md "Generate stream")
+  async generateContent(photoBlob, metadata, onEvent = null) {
+    const emit = (evt) => {
+      if (!onEvent) return;
+      try { onEvent(evt); } catch (e) { console.warn('[API] onEvent handler error:', e.message); }
+    };
 
-      // Create form data
-      const FormData = require('form-data');
-      const formData = new FormData();
+    console.log('[API] Generating content (streaming)...');
 
-      formData.append('photo', photoBlob, {
-        filename: 'photo.jpg',
-        contentType: 'image/jpeg'
-      });
-
-      formData.append('equipment_id', metadata.equipment_id);
-      formData.append('hub_id', metadata.hub_id);
-
-      // Include style if selected by user (knob rotation)
-      if (metadata.style) {
-        formData.append('style_id', metadata.style);
-        console.log('[API] Including selected style:', metadata.style);
-      }
-
-      // Send request with form data
-      const response = await this.requestMultipartJson('POST', '/api/kiosk/generate', formData, { timeoutMs: 60000 });
-
-      if (!response.success) {
-        throw new Error(response.error || 'Content generation failed');
-      }
-
-      console.log('[API] Content generated successfully');
-      console.log('[API] Generation type:', response.generation_type || 'unknown');
-      console.log('[API] Session ID:', response.session_id);
-      console.log('[API] Metadata:', JSON.stringify(response.metadata || {}, null, 2));
-
-      // Log type-specific info
-      if (response.generation_type === 'poem') {
-        // SECURITY: Poem and caption redacted from logs
-        if (response.session?.id) {
-          console.log('[API] Session ID:', response.session.id);
-        }
-        if (response.poem?.text) {
-          console.log('[API] Poem length:', response.poem.text.length, 'chars');
-        }
-      } else if (response.generation_type === 'image') {
-        if (response.generated_image) {
-          console.log('[API] Generated image size:', response.generated_image.length, 'chars (base64)');
-        }
-      }
-
-      return response;
-    } catch (error) {
-      console.error('[API] Content generation error:', error);
-      throw error;
+    const FormData = require('form-data');
+    const formData = new FormData();
+    formData.append('photo', photoBlob, { filename: 'photo.jpg', contentType: 'image/jpeg' });
+    formData.append('equipment_id', String(metadata.equipment_id));
+    formData.append('hub_id', String(metadata.hub_id));
+    formData.append('stream', '1');
+    if (metadata.style) {
+      formData.append('style_id', String(metadata.style));
+      console.log('[API] Including selected style:', metadata.style);
     }
+
+    const result = { events: [], poem: '', caption: null, session_id: null, generation_type: null, render: null, image: null, error: null };
+    let isNdjson = null;   // decided from the response content-type
+    let buffered = '';     // partial NDJSON line
+    const startedAt = Date.now();
+
+    const handleEvent = (evt) => {
+      if (!evt || typeof evt !== 'object') return;
+      result.events.push(evt.type);
+      switch (evt.type) {
+        case 'start':
+          result.session_id = evt.session_id || null;
+          result.booking_id = evt.booking_id || null;
+          result.generation_type = evt.generation_type || 'poem';
+          result.caption = evt.caption || null;
+          console.log(`[API] stream start: session ${result.session_id}, type ${result.generation_type}, +${Date.now() - startedAt}ms`);
+          break;
+        case 'poem_delta':
+          result.poem += evt.text || '';
+          if (!result.firstDeltaMs) {
+            result.firstDeltaMs = Date.now() - startedAt;
+            console.log(`[API] first poem token after ${result.firstDeltaMs}ms`);
+          }
+          break;
+        case 'poem_done':
+          if (typeof evt.poem === 'string' && evt.poem.length) result.poem = evt.poem;
+          result.metadata = evt.metadata || null;
+          console.log(`[API] poem done: ${result.poem.length} chars, +${Date.now() - startedAt}ms`);
+          break;
+        case 'image_result':
+          result.generation_type = 'image';
+          result.image = evt;
+          console.log(`[API] image result received, +${Date.now() - startedAt}ms`);
+          break;
+        case 'render':
+          result.render = evt;
+          console.log(`[API] render ready (${evt.width}x${evt.height}), +${Date.now() - startedAt}ms`);
+          break;
+        case 'render_error':
+          result.render_error = evt.error || 'render failed';
+          console.error('[API] backend render failed:', result.render_error);
+          break;
+        case 'error':
+          result.error = evt.error || 'generation failed';
+          result.error_code = evt.code || null;
+          console.error('[API] generation error from backend:', result.error);
+          break;
+        case 'done':
+          break;
+        default:
+          console.log('[API] unknown stream event:', evt.type);
+      }
+      emit(evt);
+    };
+
+    const onChunk = (chunk, res) => {
+      if (isNdjson === null) {
+        const ct = String(res.headers['content-type'] || '');
+        isNdjson = ct.includes('application/x-ndjson') || ct.includes('application/jsonl');
+      }
+      if (!isNdjson) return; // plain JSON: parsed at the end
+      buffered += chunk;
+      let nl;
+      while ((nl = buffered.indexOf('\n')) >= 0) {
+        const line = buffered.slice(0, nl).trim();
+        buffered = buffered.slice(nl + 1);
+        if (!line) continue;
+        try { handleEvent(JSON.parse(line)); } catch (e) { console.warn('[API] bad NDJSON line:', e.message); }
+      }
+    };
+
+    const { statusCode, data } = await this.requestMultipart('POST', '/api/kiosk/generate', formData, {
+      timeoutMs: 90000,
+      accept: 'application/x-ndjson, application/json',
+      onChunk
+    });
+
+    if (isNdjson) {
+      if (buffered.trim()) {
+        try { handleEvent(JSON.parse(buffered.trim())); } catch (e) { /* ignore trailing junk */ }
+      }
+      if (statusCode < 200 || statusCode >= 300) {
+        const err = new Error(result.error || `HTTP ${statusCode}`);
+        err.code = result.error_code;
+        throw err;
+      }
+      if (result.error) {
+        const err = new Error(result.error);
+        err.code = result.error_code;
+        throw err;
+      }
+      if (!result.events.includes('done')) {
+        console.warn('[API] stream ended without done event');
+        emit({ type: 'done', incomplete: true });
+      }
+      return result;
+    }
+
+    // ---- Fallback: classic single JSON response (older backend) ----
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`HTTP ${statusCode}: ${data}`);
+    }
+    let response;
+    try {
+      response = JSON.parse(data);
+    } catch (e) {
+      throw new Error(`Failed to parse response: ${e.message}`);
+    }
+    if (!response.success) {
+      throw new Error(response.error || 'Content generation failed');
+    }
+    console.log('[API] Content generated (non-streaming backend), type:', response.generation_type || 'poem');
+    const sessionId = response.session_id || (response.session && response.session.id) || null;
+    handleEvent({
+      type: 'start', session_id: sessionId, booking_id: response.booking_id || null,
+      generation_type: response.generation_type || 'poem', caption: response.caption || null
+    });
+    if (response.generation_type === 'image') {
+      handleEvent({ ...response, type: 'image_result' });
+    } else {
+      const poem = (response.poem && response.poem.text) || response.poem || '';
+      handleEvent({ type: 'poem_delta', text: poem });
+      handleEvent({ type: 'poem_done', poem, metadata: response.metadata || null });
+      const tpl = (response.branding_config && response.branding_config.template) || {};
+      if (response.public_view_url && (response.print_image_url || response.rendered_image_url)) {
+        handleEvent({
+          type: 'render',
+          session_id: sessionId,
+          public_view_url: response.public_view_url,
+          rendered_image_url: response.rendered_image_url || null,
+          print_image_url: response.print_image_url || response.rendered_image_url || null,
+          print_format: response.print_format || tpl.print_format || null,
+          print_orientation: response.print_orientation || tpl.print_orientation || null
+        });
+      } else {
+        handleEvent({ type: 'render_error', error: 'Backend did not render the image (no streaming support)' });
+      }
+    }
+    handleEvent({ type: 'done' });
+    return result;
   }
 
   // DEPRECATED: Use generateContent() instead
