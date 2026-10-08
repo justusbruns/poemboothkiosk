@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const https = require('https');
-const certificatePinning = require('../lib/certificatePinning');
+const { createHttpsAgent } = require('../lib/httpsAgent');
 const CredentialStore = require('./credentialStore');
 
 // Certificate paths (platform-specific)
@@ -58,7 +58,7 @@ class ApiClient {
     this.certificateBase64 = null;
     this.deviceInfo = null;
     this.requestCounter = 0; // Track sequential request numbers
-    this.pinnedAgent = null; // HTTPS agent with certificate pinning
+    this.httpsAgent = null; // keep-alive HTTPS agent (standard TLS)
   }
 
   // SECURITY: Redact sensitive data from logs
@@ -99,13 +99,8 @@ class ApiClient {
       console.log('[API] Platform:', this.deviceInfo.platform);
       console.log('[API] Machine ID:', this.deviceInfo.machineId);
 
-      // Create pinned HTTPS agent for secure connections
-      const url = new URL(this.baseUrl);
-      this.pinnedAgent = certificatePinning.createPinnedAgent(
-        url.hostname,
-        certificatePinning.PINNED_FINGERPRINTS
-      );
-      console.log('[API] Certificate pinning enabled for:', url.hostname);
+      // Keep-alive HTTPS agent (standard TLS validation)
+      this.httpsAgent = createHttpsAgent();
 
       // 1. Stored device credentials from a previous pairing
       const stored = this.credentialStore.load();
@@ -868,7 +863,7 @@ class ApiClient {
         path: url.pathname + url.search,
         method,
         headers,
-        agent: this.pinnedAgent // Certificate pinning enabled
+        agent: this.httpsAgent
       };
 
       const bodyData = body ? JSON.stringify(body) : null;
@@ -897,14 +892,6 @@ class ApiClient {
             console.log(`[API] #${requestId} ✅ HTTP ${res.statusCode} in ${ms}ms (${data.length} chars)`);
           }
 
-          // Validate response header fingerprint (defense-in-depth)
-          if (this.pinnedAgent) {
-            certificatePinning.validateResponseHeader(
-              certificatePinning.PINNED_FINGERPRINTS[0],
-              res.headers
-            );
-          }
-
           let json = null;
           if (parse && data) {
             try { json = JSON.parse(data); } catch (e) { json = null; }
@@ -914,21 +901,10 @@ class ApiClient {
       });
 
       req.on('error', (error) => {
-        // Check if this is a certificate pinning error
-        if (error.message && error.message.includes('Certificate pinning')) {
-          console.error(`[API] ❌ [SECURITY] REQUEST #${requestId} CERT PINNING FAILED [${method} ${endpoint}]`);
-          console.error(`[API] [SECURITY] Hostname: ${options.hostname}`);
-          console.error(`[API] [SECURITY] Error: ${error.message}`);
-          // DO NOT retry - this indicates MITM attack
-          reject(new Error('Connection security verification failed. Please contact support.'));
-        } else {
-          // Existing error handling
-          console.error(`[API] ❌ REQUEST #${requestId} NETWORK ERROR [${method} ${endpoint}]:`, error);
-          reject(error);
-        }
+        console.error(`[API] ❌ REQUEST #${requestId} NETWORK ERROR [${method} ${endpoint}]:`, error.message);
+        reject(error);
       });
 
-      req.on('error', () => { /* handled above */ });
       req.setTimeout(30000, () => req.destroy(new Error('Request timeout')));
 
       if (bodyData) {
@@ -983,7 +959,7 @@ class ApiClient {
         path: url.pathname + url.search,
         method,
         headers,
-        agent: this.pinnedAgent // Certificate pinning enabled
+        agent: this.httpsAgent
       };
 
       console.log(`[API] #${requestId} ${method} ${endpoint} (multipart, auth: ${this.authHeaderDescription()})`);
@@ -1016,17 +992,6 @@ class ApiClient {
           // SECURITY: never log the body - it contains the caption/poem about the guest and image data
           (ok ? console.log : console.error)(`[API] #${requestId} ${ok ? '✅' : '❌'} HTTP ${res.statusCode} in ${ms}ms (${data.length} chars)`);
 
-          // Validate response header fingerprint (defense-in-depth)
-          if (this.pinnedAgent) {
-            const headerValid = certificatePinning.validateResponseHeader(
-              certificatePinning.PINNED_FINGERPRINTS[0],
-              res.headers
-            );
-            if (!headerValid) {
-              console.warn('[API] [SECURITY] Response header fingerprint validation failed');
-            }
-          }
-
           if (res.statusCode === 401 && this.authMode === 'device_token') {
             // Token was fresh a moment ago, so a 401 here means the device
             // user is gone (revoked / re-paired elsewhere).
@@ -1043,17 +1008,8 @@ class ApiClient {
       });
 
       req.on('error', (error) => {
-        // Check if this is a certificate pinning error
-        if (error.message && error.message.includes('Certificate pinning')) {
-          console.error(`[API] ❌ [SECURITY] MULTIPART REQUEST #${requestId} CERT PINNING FAILED [${method} ${endpoint}]`);
-          console.error(`[API] [SECURITY] Hostname: ${reqOptions.hostname}`);
-          console.error(`[API] [SECURITY] Error: ${error.message}`);
-          // DO NOT retry - this indicates MITM attack
-          fail(new Error('Connection security verification failed. Please contact support.'));
-        } else {
-          console.error(`[API] #${requestId} ❌ NETWORK ERROR [${method} ${endpoint}]:`, error.message);
-          fail(error);
-        }
+        console.error(`[API] #${requestId} ❌ NETWORK ERROR [${method} ${endpoint}]:`, error.message);
+        fail(error);
       });
 
       // Pipe formData to request

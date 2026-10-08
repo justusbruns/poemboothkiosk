@@ -115,10 +115,7 @@ A plain JSON response (older backend) is converted into the same events by the c
 
 ### Security Library
 
-**`src/lib/certificatePinning.js`** - TLS certificate pinning:
-- Staging uses hardcoded SHA-256 fingerprints
-- Production uses TOFU (Trust On First Use)
-- Has emergency bypass support for incident response
+**`src/lib/httpsAgent.js`** - one keep-alive `https.Agent` for all backend calls. Transport security is standard TLS against the system certificate store; there is no certificate pinning (the former TOFU "pinning" accepted any new fingerprint and was removed).
 
 ## Certificate-Based Authentication System
 
