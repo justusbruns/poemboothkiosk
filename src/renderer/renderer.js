@@ -247,6 +247,21 @@ async function initializeCamera(videoElement) {
   }
 }
 
+// Long edge of the captured photo. The backend renders both the web and the
+// print asset from this upload (2048 px is plenty for a 4x6 at 300 dpi), and a
+// smaller canvas keeps the JPEG encode well under 200 ms so the photo is on
+// screen right after the flash.
+const CAPTURE_MAX_EDGE = 2048;
+const CAPTURE_JPEG_QUALITY = 0.88;
+
+// Resume the live camera preview (paused at capture) when the booth is back
+function resumeCameraPreview() {
+  const v = elements.cameraVideo;
+  if (v && v.srcObject && v.paused) {
+    v.play().catch(() => { /* autoplay normally covers this */ });
+  }
+}
+
 async function capturePhoto(videoElement, canvasElement) {
   try {
     console.log('[CAMERA] Capturing photo...');
@@ -255,9 +270,17 @@ async function capturePhoto(videoElement, canvasElement) {
       throw new Error('Camera not initialized');
     }
 
-    const width = videoElement.videoWidth;
-    const height = videoElement.videoHeight;
+    const srcWidth = videoElement.videoWidth;
+    const srcHeight = videoElement.videoHeight;
     const rotation = state.cameraRotation || 0;
+
+    // Capture at the size we actually use (≤ CAPTURE_MAX_EDGE on the long side).
+    // The backend renders web + print assets from this upload, so a full 4K frame
+    // only made the JPEG encode take seconds — during which the flash had faded
+    // and the guest saw the live camera again instead of their photo.
+    const scale = Math.min(1, CAPTURE_MAX_EDGE / Math.max(srcWidth, srcHeight));
+    const width = Math.round(srcWidth * scale);
+    const height = Math.round(srcHeight * scale);
 
     // Adjust canvas size based on rotation
     if (rotation === 90 || rotation === 270) {
@@ -270,6 +293,7 @@ async function capturePhoto(videoElement, canvasElement) {
     }
 
     const ctx = canvasElement.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
     ctx.save();
 
     // Apply transformations in CORRECT order
@@ -282,25 +306,29 @@ async function capturePhoto(videoElement, canvasElement) {
     // 3. THEN rotate (maintains correct mirror axis)
     ctx.rotate((rotation * Math.PI) / 180);
 
-    // 4. Draw image centered
+    // 4. Draw image centered (scaled)
     ctx.drawImage(videoElement, -width / 2, -height / 2, width, height);
 
     ctx.restore();
 
-    // Encode asynchronously (toBlob) instead of toDataURL: the JPEG encode of a 1080p
-    // frame takes long enough to freeze the renderer — and the flash — mid-animation.
+    // Freeze the live preview on exactly this frame: the guest should see the
+    // photo they just took (not themselves moving) until the processing screen
+    // takes over. The preview is resumed when the booth screen comes back.
+    try { videoElement.pause(); } catch (e) { /* ignore */ }
+
+    // Encode asynchronously (toBlob) instead of toDataURL: a synchronous JPEG encode
+    // freezes the renderer — and the flash — mid-animation.
     const dataURL = await new Promise((resolve, reject) => {
       canvasElement.toBlob((blob) => {
         if (!blob) { reject(new Error('Canvas toBlob returned null')); return; }
+        console.log(`[CAMERA] Photo captured: ${srcWidth}x${srcHeight} → ${canvasElement.width}x${canvasElement.height}, ${(blob.size / 1024).toFixed(0)} KB, rotation ${rotation}°`);
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result);
         reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
         reader.readAsDataURL(blob);
-      }, 'image/jpeg', 0.95);
+      }, 'image/jpeg', CAPTURE_JPEG_QUALITY);
     });
 
-    console.log('[CAMERA] Photo captured:', canvasElement.width, 'x', canvasElement.height,
-                'with', rotation, '° rotation');
     return dataURL;
   } catch (error) {
     console.error('[CAMERA] Capture error:', error);
@@ -2203,7 +2231,9 @@ function downscalePhotoDataUrl(dataUrl, maxEdge = 2048, quality = 0.85) {
       img.onload = () => {
         try {
           const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
-          if (scale >= 1 && quality >= 0.95) return resolve(dataUrl);
+          // Already small enough (capturePhoto caps at CAPTURE_MAX_EDGE): don't
+          // re-encode a second time.
+          if (scale >= 1) return resolve(dataUrl);
           const w = Math.round(img.width * scale);
           const h = Math.round(img.height * scale);
           const canvas = document.createElement('canvas');
@@ -3809,7 +3839,7 @@ function showScreen(screenName) {
       state.screen = screenName;
       if (screenName === 'booth') state.isCapturing = false;
       updateBoothBrandVisibility();
-      if (screenName === 'booth') { resetStyleCoverflow(); setupBoothBrand(); updateBoothBrandVisibility(); }
+      if (screenName === 'booth') { resumeCameraPreview(); resetStyleCoverflow(); setupBoothBrand(); updateBoothBrandVisibility(); }
     }, 1000); // Match CSS transition duration
   } else {
     // Normal screen transition
@@ -3823,7 +3853,7 @@ function showScreen(screenName) {
     updateBoothBrandVisibility();
 
     // Reset the style coverflow when returning to the booth (after a capture)
-    if (screenName === 'booth') { resetStyleCoverflow(); setupBoothBrand(); updateBoothBrandVisibility(); }
+    if (screenName === 'booth') { resumeCameraPreview(); resetStyleCoverflow(); setupBoothBrand(); updateBoothBrandVisibility(); }
   }
 }
 
