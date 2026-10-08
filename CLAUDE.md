@@ -108,9 +108,7 @@ A plain JSON response (older backend) is converted into the same events by the c
 - Portal print jobs (`printJobService.js`) download `rendered_image_url` of the job
 - Manages printer status and supply telemetry
 
-**`cameraService.js`** - Camera capture:
-- Currently implemented inline in renderer using browser APIs
-- Uses `navigator.mediaDevices.getUserMedia`
+**Camera capture** lives in the renderer (`getUserMedia` → canvas, captured at ≤2048 px); there is no camera service in main.
 
 **`mockPrinterService.js`** - Dev printer simulation:
 - Used by default in dev mode (override with `--real-printer`)

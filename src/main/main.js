@@ -93,12 +93,6 @@ const FORCE_PAIR = process.argv.includes('--force-pair');
 // Mock printer: use in dev mode by default, unless --real-printer is specified
 const USE_MOCK_PRINTER = process.argv.includes('--mock-printer') ||
                          (IS_DEV && !process.argv.includes('--real-printer'));
-const CERT_PATHS = {
-  win32: 'C:\\ProgramData\\PoemBooth',
-  linux: '/etc/poembooth',
-  darwin: '/Library/Application Support/PoemBooth'
-};
-
 let mainWindow;
 let rendererCrashTimes = [];
 let windowRecreateTimes = [];   // kiosk-mode window recreations (bounded)
@@ -128,27 +122,6 @@ let hardwareService = null;
 let printerService = null;
 let updateService = null;
 let printJobService = null;
-
-// Get platform-specific certificate path
-function getCertificatePath() {
-  const basePath = CERT_PATHS[process.platform];
-  return {
-    base: basePath,
-    cert: path.join(basePath, 'device.crt'),
-    key: path.join(basePath, 'device.key'),
-    ca: path.join(basePath, 'ca.crt')
-  };
-}
-
-// Check if certificates exist
-function certificatesExist() {
-  const certPaths = getCertificatePath();
-  return (
-    fs.existsSync(certPaths.cert) &&
-    fs.existsSync(certPaths.key) &&
-    fs.existsSync(certPaths.ca)
-  );
-}
 
 // Create main window
 async function createWindow() {
@@ -511,7 +484,6 @@ app.whenReady().then(async () => {
   console.log('[MAIN] Platform:', process.platform);
   console.log('[MAIN] Dev mode:', IS_DEV);
   console.log('[MAIN] Staging mode:', IS_STAGING);
-  console.log('[MAIN] Certificates exist:', certificatesExist());
 
   await createWindow();
 
@@ -543,54 +515,8 @@ if (!IS_DEV) {
 // IPC Handlers - Basic Info
 // =============================================================================
 
-// Get certificate paths
-ipcMain.handle('get-certificate-path', async () => {
-  return getCertificatePath();
-});
-
-// Check if certificates exist
-ipcMain.handle('certificates-exist', async () => {
-  return certificatesExist();
-});
-
-// SECURITY: read-certificate IPC handler removed
-// Certificates are never exposed to renderer process
-// All certificate operations happen in main process only
-
-// Get system info
-ipcMain.handle('get-system-info', async () => {
-  const os = require('os');
-
-  try {
-    // Try to get machine ID, but don't fail if not available
-    let machineid = 'unknown';
-    try {
-      const { machineId } = require('node-machine-id');
-      machineid = await machineId();
-    } catch (e) {
-      console.log('[MAIN] node-machine-id not available, using hostname');
-      machineid = os.hostname();
-    }
-
-    return {
-      platform: process.platform,
-      hostname: os.hostname(),
-      machineId: machineid,
-      cpuCount: os.cpus().length,
-      totalMemory: os.totalmem(),
-      freeMemory: os.freemem(),
-      appVersion: app.getVersion()
-    };
-  } catch (error) {
-    console.error('[MAIN] Error getting system info:', error);
-    return {
-      platform: process.platform,
-      hostname: os.hostname(),
-      machineId: 'unknown',
-      appVersion: app.getVersion()
-    };
-  }
-});
+// Certificates (legacy provisioning) are handled entirely inside apiClient
+// as an auth fallback; nothing about them is exposed to the renderer.
 
 // Get debug flags
 ipcMain.handle('get-flags', async () => {
@@ -864,26 +790,6 @@ ipcMain.handle('printer:print-session', async (event, sessionId, printImageUrl, 
   }
 });
 
-// DEPRECATED: Poem generation (kept for backward compatibility)
-ipcMain.handle('api:generate-poem', async (event, photoDataUrl, metadata) => {
-  try {
-    console.log('[MAIN] Generating poem... (deprecated handler)');
-    if (!apiClient) {
-      throw new Error('API client not initialized');
-    }
-
-    // Convert data URL to blob
-    const base64Data = photoDataUrl.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    const response = await apiClient.generatePoem(buffer, metadata);
-    return response;
-  } catch (error) {
-    console.error('[MAIN] Poem generation error:', error);
-    throw error;
-  }
-});
-
 // Upload rendered image
 ipcMain.handle('api:upload-image', async (event, imageBuffer, sessionId, quality = 'standard') => {
   try {
@@ -958,21 +864,6 @@ ipcMain.handle('wifi:install-profile', async (event, wifiConfig) => {
   }
 });
 
-// Get current WiFi network
-ipcMain.handle('wifi:get-current', async () => {
-  try {
-    if (!wifiService) {
-      wifiService = new WiFiService();
-    }
-
-    const network = await wifiService.getCurrentNetwork();
-    return { success: true, network };
-  } catch (error) {
-    console.error('[MAIN] Get current network error:', error);
-    return { success: false, error: error.message, network: null };
-  }
-});
-
 // =============================================================================
 // IPC Handlers - Printer
 // =============================================================================
@@ -1041,27 +932,6 @@ ipcMain.handle('printer:get-status', async () => {
 // =============================================================================
 // IPC Handlers - Misc
 // =============================================================================
-
-// Store device config
-ipcMain.handle('store-device-config', async (event, config) => {
-  deviceConfig = config;
-  console.log('[MAIN] Device config stored:', {
-    deviceId: config.device_id,
-    equipmentId: config.equipment_id,
-    hubId: config.hub_id
-  });
-  return true;
-});
-
-// Get device config
-ipcMain.handle('get-device-config', async () => {
-  return deviceConfig;
-});
-
-// Get kiosk config
-ipcMain.handle('get-kiosk-config', async () => {
-  return kioskConfig;
-});
 
 // Quit app (only in dev mode)
 ipcMain.handle('quit-app', async () => {
@@ -1185,20 +1055,6 @@ ipcMain.handle('update:skip', async () => {
     updateService.skipUpdate();
   }
   return { success: true };
-});
-
-// Get update status
-ipcMain.handle('update:get-status', async () => {
-  if (!updateService) {
-    return {
-      currentVersion: app.getVersion(),
-      updateAvailable: false,
-      updateInfo: null,
-      downloadProgress: 0,
-      updateDownloaded: false
-    };
-  }
-  return updateService.getStatus();
 });
 
 // Handle uncaught exceptions

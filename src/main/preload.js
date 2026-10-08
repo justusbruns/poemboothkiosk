@@ -5,10 +5,6 @@ const { contextBridge, ipcRenderer } = require('electron');
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
   // Basic Info
-  getCertificatePath: () => ipcRenderer.invoke('get-certificate-path'),
-  certificatesExist: () => ipcRenderer.invoke('certificates-exist'),
-  // SECURITY: readCertificate removed - never expose private keys to renderer
-  getSystemInfo: () => ipcRenderer.invoke('get-system-info'),
   getFlags: () => ipcRenderer.invoke('get-flags'),
 
   // API Client
@@ -28,14 +24,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiGenerateContent: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-content', photoDataUrl, metadata),
   onGenerateEvent: (callback) => ipcRenderer.on('generate:event', (event, evt) => callback(evt)),
   printerPrintSession: (sessionId, printImageUrl, options) => ipcRenderer.invoke('printer:print-session', sessionId, printImageUrl, options),
-  apiGeneratePoem: (photoDataUrl, metadata) => ipcRenderer.invoke('api:generate-poem', photoDataUrl, metadata), // DEPRECATED
   apiUploadImage: (imageBuffer, sessionId) => ipcRenderer.invoke('api:upload-image', imageBuffer, sessionId),
   apiLogPrint: (sessionId) => ipcRenderer.invoke('api:log-print', sessionId),
 
   // WiFi Service
   wifiConnect: (wifiConfig) => ipcRenderer.invoke('wifi:connect', wifiConfig),
   wifiInstallProfile: (wifiConfig) => ipcRenderer.invoke('wifi:install-profile', wifiConfig),
-  wifiGetCurrent: () => ipcRenderer.invoke('wifi:get-current'),
 
   // Printer Service
   printerPrint: (imageBuffer, options) => ipcRenderer.invoke('printer:print', imageBuffer, options),
@@ -52,9 +46,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   sendKeyEvent: (type, code, key) => ipcRenderer.send('hardware:keyEvent', { type, code, key }),
 
   // Misc
-  storeDeviceConfig: (config) => ipcRenderer.invoke('store-device-config', config),
-  getDeviceConfig: () => ipcRenderer.invoke('get-device-config'),
-  getKioskConfig: () => ipcRenderer.invoke('get-kiosk-config'),
   quitApp: () => ipcRenderer.invoke('quit-app'),
 
   // Auto-Update
@@ -62,7 +53,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateDownload: () => ipcRenderer.invoke('update:download'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
   updateSkip: () => ipcRenderer.invoke('update:skip'),
-  updateGetStatus: () => ipcRenderer.invoke('update:get-status'),
   onUpdateProgress: (callback) => ipcRenderer.on('update:progress', (event, progress) => callback(progress)),
   onUpdateDownloaded: (callback) => ipcRenderer.on('update:downloaded', (event, info) => callback(info))
 });

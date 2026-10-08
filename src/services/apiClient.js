@@ -669,13 +669,6 @@ class ApiClient {
     return result;
   }
 
-  // DEPRECATED: Use generateContent() instead
-  // Kept for backward compatibility
-  async generatePoem(photoBlob, metadata) {
-    console.warn('[API] DEPRECATED: generatePoem() - use generateContent() instead');
-    return this.generateContent(photoBlob, metadata);
-  }
-
   // Upload rendered image
   async uploadRenderedImage(imageBuffer, sessionId, quality = 'standard') {
     try {
