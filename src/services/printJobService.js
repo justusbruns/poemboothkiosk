@@ -69,14 +69,15 @@ class PrintJobService {
   async reportStatus() {
     let { connected, status } = await this.currentStatus();
 
-    // Read DNP supplies whenever we're NOT actively printing (DNP warns against status
+    // Read DNP supplies whenever OUR print job is not running (DNP warns against status
     // queries mid-print — cspstat and the print job contend for the printer's USB
-    // channel and stall each other). isPrinting() covers the print from its first ms,
-    // not only once the status flips to "printing" (that happens after the print's
-    // preparation work, leaving a race window the heartbeat used to slip through).
+    // channel and stall each other). isPrinting() covers our job from its first ms.
+    // Deliberately NOT gated on the reported status: cspstat keeps saying "printing"
+    // while the DNP ejects/cools after a job, and skipping reads on that status meant it
+    // could never be refreshed — the printer then looked "printing" forever and a
+    // reconnect was only noticed after a kiosk restart.
     const printer = this.getPrinterService && this.getPrinterService();
-    const printing = status === 'printing' ||
-      (printer && typeof printer.isPrinting === 'function' && printer.isPrinting());
+    const printing = !!(printer && typeof printer.isPrinting === 'function' && printer.isPrinting());
     let supplies = null;
     if (printing) {
       // Kill an in-flight read too — one may have started just before the print did.

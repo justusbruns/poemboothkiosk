@@ -166,7 +166,13 @@ class PrinterService {
    *   second USB query on the status heartbeat). Omit to read here.
    */
   async detect(supplies) {
-    if (this.lastStatus === 'printing') return this.isAvailable; // never probe mid-print
+    // Never probe while OUR print job is running (cspstat and the print contend for the
+    // USB channel). Only the in-flight flag counts here: gating on lastStatus === 'printing'
+    // locked the service up for good whenever cspstat itself reported "printing" after a
+    // job (the DNP is still ejecting/cooling for ~20-40 s) — that status was then never
+    // refreshed because every refresh was skipped "mid-print", so an unplugged or
+    // reconnected printer only showed up again after a kiosk restart.
+    if (this._printInFlight) return this.isAvailable;
 
     if (supplies === undefined) {
       supplies = this.supply.available() ? await this.supply.read() : null;
@@ -682,7 +688,9 @@ class PrinterService {
   /** True while a print() call is executing (from its first ms, not only once the
    *  status flips to "printing"). Used to gate cspstat/supply reads. */
   isPrinting() {
-    return this._printInFlight || this.lastStatus === 'printing';
+    // Our own job only. lastStatus may say 'printing' because cspstat reported the
+    // printer busy (ejecting/cooling after a job); that must not block status reads.
+    return this._printInFlight;
   }
 
   async doPrint(imageBuffer, options = {}) {
@@ -1163,7 +1171,7 @@ class PrinterService {
     clearTimeout(this._deviceChangeTimer);
     clearTimeout(this._deviceFollowUpTimer);
     const run = () => {
-      if (this.lastStatus === 'printing') return; // detect() skips mid-print anyway
+      if (this._printInFlight) return; // detect() skips during our own print anyway
       this.detect().catch(e => console.warn('[PRINTER] detect after device change failed:', e.message));
     };
     // Devices enumerate in bursts; settle for 2 s, then look. A DNP printer answers
