@@ -14,15 +14,22 @@ if (!app.isPackaged) {
 
 // === Persistent file logging ===
 // Mirror everything we console.log/warn/error to a file under userData so we can
-// debug remote kiosks. One file per session, plus a "latest.log" symlink-style copy
-// for easy access. Older session files are pruned to last 5.
+// debug remote kiosks. One file per session (async write stream) plus
+// "latest.log", which is truncated at startup and holds ONLY the current
+// session. Older session files are pruned to the last 5. Both streams are
+// capped so a chatty kiosk can never fill the disk again.
 const LOG_DIR = path.join(app.getPath('userData'), 'logs');
 try { fs.mkdirSync(LOG_DIR, { recursive: true }); } catch (e) { /* ignore */ }
 
 const sessionStamp = new Date().toISOString().replace(/[:.]/g, '-');
 const SESSION_LOG = path.join(LOG_DIR, `session-${sessionStamp}.log`);
 const LATEST_LOG = path.join(LOG_DIR, 'latest.log');
+const LOG_MAX_BYTES = 50 * 1024 * 1024; // per file, per session
 const logStream = fs.createWriteStream(SESSION_LOG, { flags: 'a' });
+const latestStream = fs.createWriteStream(LATEST_LOG, { flags: 'w' }); // truncate
+let logBytes = 0;
+let logCapped = false;
+for (const s of [logStream, latestStream]) s.on('error', () => { /* never crash on log I/O */ });
 
 // Prune to last 5 session files
 try {
@@ -37,14 +44,23 @@ try {
 
 const writeLog = (level, args) => {
   try {
+    if (logCapped) return;
     const line = new Date().toISOString() + ' [' + level + '] ' +
       args.map(a => {
         if (a instanceof Error) return a.stack || a.message;
         if (typeof a === 'string') return a;
         try { return JSON.stringify(a); } catch (e) { return String(a); }
       }).join(' ') + '\n';
+    logBytes += Buffer.byteLength(line);
+    if (logBytes > LOG_MAX_BYTES) {
+      logCapped = true;
+      const notice = new Date().toISOString() + ' [WARN] [MAIN] Log size cap reached - further lines dropped for this session\n';
+      logStream.write(notice);
+      latestStream.write(notice);
+      return;
+    }
     logStream.write(line);
-    try { fs.appendFileSync(LATEST_LOG, line); } catch (e) { /* ignore */ }
+    latestStream.write(line);
   } catch (e) { /* never let logging crash the app */ }
 };
 
@@ -95,6 +111,22 @@ const CERT_PATHS = {
 };
 
 let mainWindow;
+let rendererCrashTimes = [];
+let allowQuitForUpdate = false; // set right before the updater restarts us
+
+// Send to the renderer only while the window is alive
+function sendToRenderer(channel, ...args) {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send(channel, ...args);
+      return true;
+    }
+  } catch (e) {
+    console.warn('[MAIN] sendToRenderer failed:', channel, e.message);
+  }
+  return false;
+}
+
 let deviceConfig = null;
 let kioskConfig = null;
 
@@ -173,9 +205,34 @@ async function createWindow() {
     else console.log(tag);
   });
 
-  // Capture renderer process crashes — these are silent otherwise and look like "kiosk just froze"
+  // Capture renderer process crashes — these are silent otherwise and look like
+  // "kiosk just froze". Reload the page (bounded) so the booth recovers by itself.
   mainWindow.webContents.on('render-process-gone', (event, details) => {
     console.error('[RENDERER-GONE]', JSON.stringify(details));
+    if (details && details.reason === 'clean-exit') return;
+    const now = Date.now();
+    rendererCrashTimes = rendererCrashTimes.filter(t => now - t < 10 * 60 * 1000);
+    rendererCrashTimes.push(now);
+    if (rendererCrashTimes.length > 5) {
+      console.error('[MAIN] Renderer crashed more than 5 times in 10 minutes - not reloading again');
+      return;
+    }
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('[MAIN] Reloading renderer after crash');
+        mainWindow.webContents.reload();
+      }
+    }, 1500);
+  });
+
+  // Production: a closed/destroyed window must never leave a windowless
+  // kiosk process behind — recreate it.
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+    if (!IS_DEV && !allowQuitForUpdate) {
+      console.warn('[MAIN] Window closed in kiosk mode - recreating');
+      setTimeout(() => { if (!mainWindow) createWindow().catch(e => console.error('[MAIN] createWindow failed:', e)); }, 1000);
+    }
   });
   mainWindow.webContents.on('unresponsive', () => {
     console.error('[RENDERER] webContents became unresponsive');
@@ -266,22 +323,22 @@ async function initializeHardware() {
     // Set up hardware event handlers
     hardwareService.on('buttonPress', () => {
       console.log('[MAIN] Hardware button pressed');
-      mainWindow.webContents.send('hardware:buttonPress');
+      sendToRenderer('hardware:buttonPress');
     });
 
     hardwareService.on('buttonRelease', (data) => {
       console.log('[MAIN] Hardware button released');
-      mainWindow.webContents.send('hardware:buttonRelease', data);
+      sendToRenderer('hardware:buttonRelease', data);
     });
 
     hardwareService.on('longPress', () => {
       console.log('[MAIN] Hardware long press detected');
-      mainWindow.webContents.send('hardware:longPress');
+      sendToRenderer('hardware:longPress');
     });
 
     hardwareService.on('knobRotate', (data) => {
       console.log('[MAIN] Hardware knob rotated:', data.direction);
-      mainWindow.webContents.send('hardware:knobRotate', data);
+      sendToRenderer('hardware:knobRotate', data);
     });
 
     // In dev mode, set up keyboard shortcuts for testing
@@ -409,19 +466,24 @@ app.on('will-quit', async () => {
 });
 
 // Kill all child processes (Playwright/Chromium) before update install
+// Kill direct child processes (printer PowerShell worker etc.) before an
+// update install. Uses CIM via PowerShell: `wmic` no longer exists on current
+// Windows 11 builds, which made the old implementation fail on every update.
 function killChildProcesses() {
+  if (process.platform !== 'win32') return;
   try {
-    const { execSync } = require('child_process');
+    const { execFileSync } = require('child_process');
     const pid = process.pid;
-    // Get all descendant PIDs and kill them
-    const output = execSync(
-      `wmic process where "ParentProcessId=${pid}" get ProcessId /format:list`,
-      { encoding: 'utf8', timeout: 5000 }
+    const output = execFileSync(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command',
+        `Get-CimInstance Win32_Process -Filter "ParentProcessId=${pid}" | Select-Object -ExpandProperty ProcessId`],
+      { encoding: 'utf8', timeout: 8000, windowsHide: true }
     );
-    const childPids = output.match(/ProcessId=(\d+)/g)?.map(s => s.split('=')[1]) || [];
+    const childPids = output.split(/\r?\n/).map(s => s.trim()).filter(s => /^\d+$/.test(s));
     for (const childPid of childPids) {
       try {
-        execSync(`taskkill /PID ${childPid} /T /F`, { stdio: 'ignore', timeout: 3000 });
+        execFileSync('taskkill', ['/PID', childPid, '/T', '/F'], { stdio: 'ignore', timeout: 3000, windowsHide: true });
         console.log(`[MAIN] Killed child process ${childPid}`);
       } catch (e) {
         // Process may have already exited
@@ -450,16 +512,15 @@ app.whenReady().then(async () => {
   });
 });
 
-// Quit when all windows are closed (except on macOS)
+// Dev: quit when the window is closed. Kiosk mode: the 'closed' handler in
+// createWindow recreates the window instead, so never quit here.
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin' || IS_DEV) {
+  if (IS_DEV) {
     app.quit();
   }
 });
 
 // Prevent app quit in kiosk mode (but allow quit for updates)
-let allowQuitForUpdate = false;
-
 if (!IS_DEV) {
   app.on('before-quit', (event) => {
     if (!allowQuitForUpdate) {

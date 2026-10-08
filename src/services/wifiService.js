@@ -1,13 +1,43 @@
-// WiFi Service - QR code scanning and WiFi connection
+// WiFi Service - WiFi connection (QR scanning lives in the renderer)
 const wifi = require('node-wifi');
 const { EventEmitter } = require('events');
-const jsQR = require('jsqr'); // QR code decoder
-const { exec } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const util = require('util');
-const execAsync = util.promisify(exec);
+const execFileAsync = util.promisify(execFile);
+
+// SECURITY: SSIDs come straight from a camera-scanned QR code. They are only
+// ever passed to netsh as discrete arguments (never through a shell string),
+// and must look like a real SSID: 1-32 bytes, no control characters.
+function validateSsid(ssid) {
+  if (typeof ssid !== 'string' || ssid.length === 0) {
+    throw new Error('Invalid WiFi SSID');
+  }
+  if (Buffer.byteLength(ssid, 'utf8') > 32) {
+    throw new Error('WiFi SSID too long');
+  }
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(ssid)) {
+    throw new Error('WiFi SSID contains control characters');
+  }
+  return ssid;
+}
+
+function validatePassword(password) {
+  if (password == null) return '';
+  const p = String(password);
+  if (p.length > 63) throw new Error('WiFi password too long');
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(p)) throw new Error('WiFi password contains control characters');
+  return p;
+}
+
+// Run netsh with an argument array (no shell), hidden window, short timeout.
+function netsh(args) {
+  return execFileAsync('netsh', args, { windowsHide: true, timeout: 20000 });
+}
 
 class WiFiService extends EventEmitter {
   constructor() {
@@ -21,88 +51,6 @@ class WiFiService extends EventEmitter {
     wifi.init({
       iface: null // Use default network interface
     });
-  }
-
-  // Start scanning for WiFi QR code
-  async startScanning(videoElement) {
-    try {
-      console.log('[WIFI] Starting QR scanner...');
-
-      this.videoElement = videoElement;
-
-      // Create offscreen canvas for QR detection
-      this.canvas = document.createElement('canvas');
-
-      // Request camera access
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'environment' // Back camera if available
-        },
-        audio: false
-      });
-
-      this.videoElement.srcObject = stream;
-
-      // Wait for video to be ready
-      await new Promise((resolve) => {
-        this.videoElement.onloadedmetadata = () => {
-          resolve();
-        };
-      });
-
-      // Start scanning loop
-      this.scanning = true;
-      this.scanForQRCode();
-
-      console.log('[WIFI] QR scanner started');
-    } catch (error) {
-      console.error('[WIFI] Scanner initialization error:', error);
-      throw error;
-    }
-  }
-
-  // Scan for QR code in video stream
-  scanForQRCode() {
-    if (!this.scanning) return;
-
-    try {
-      // Set canvas size to match video
-      this.canvas.width = this.videoElement.videoWidth;
-      this.canvas.height = this.videoElement.videoHeight;
-
-      const ctx = this.canvas.getContext('2d');
-      ctx.drawImage(this.videoElement, 0, 0, this.canvas.width, this.canvas.height);
-
-      // Get image data
-      const imageData = ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
-
-      // Detect QR code
-      const code = jsQR(imageData.data, imageData.width, imageData.height, {
-        inversionAttempts: 'dontInvert'
-      });
-
-      if (code) {
-        // SECURITY: Never log QR data (contains WiFi password)
-        console.log('[WIFI] QR code detected');
-
-        // Parse WiFi config from QR code
-        const wifiConfig = this.parseWiFiQR(code.data);
-
-        if (wifiConfig) {
-          this.stopScanning();
-          console.log('[WIFI] WiFi config parsed (SSID: [REDACTED], password: [REDACTED])');
-          this.emit('qr-detected', wifiConfig);
-          return;
-        }
-      }
-    } catch (error) {
-      console.error('[WIFI] QR scan error:', error);
-    }
-
-    // Continue scanning
-    this.scanInterval = setTimeout(() => this.scanForQRCode(), 100);
   }
 
   // Parse WiFi QR code. Field order is NOT fixed (Android emits S;T;P, iOS
@@ -209,9 +157,9 @@ class WiFiService extends EventEmitter {
   // Adding a profile + connecting does NOT need Location services, so this
   // works on a locked-down kiosk regardless of that privacy setting.
   async connectWindows(wifiConfig) {
-    const ssid = wifiConfig.ssid;
-    const password = wifiConfig.password || '';
-    const security = (wifiConfig.security || 'WPA2').toUpperCase();
+    const ssid = validateSsid(wifiConfig.ssid);
+    const password = validatePassword(wifiConfig.password);
+    const security = String(wifiConfig.security || 'WPA2').toUpperCase();
     const isOpen = security === 'NOPASS' || security === 'NONE' || security === '' || password === '';
 
     const xml = isOpen
@@ -224,10 +172,10 @@ class WiFiService extends EventEmitter {
       fs.writeFileSync(tmpFile, xml, { encoding: 'utf8' });
 
       // Add (or overwrite) the network profile for all users
-      await execAsync(`netsh wlan add profile filename="${tmpFile}" user=all`);
+      await netsh(['wlan', 'add', 'profile', `filename=${tmpFile}`, 'user=all']);
 
       // Connect to the network using the profile we just added
-      await execAsync(`netsh wlan connect name="${ssid}" ssid="${ssid}"`);
+      await netsh(['wlan', 'connect', `name=${ssid}`, `ssid=${ssid}`]);
 
       console.log('[WIFI] netsh connect issued for SSID: [REDACTED]');
     } catch (error) {
@@ -252,8 +200,14 @@ class WiFiService extends EventEmitter {
       return false;
     }
 
-    const ssid = wifiConfig.ssid;
-    const password = wifiConfig.password || '';
+    let ssid, password;
+    try {
+      ssid = validateSsid(wifiConfig.ssid);
+      password = validatePassword(wifiConfig.password);
+    } catch (error) {
+      console.warn('[WIFI] Not installing profile:', error.message);
+      return false;
+    }
     const isOpen = !password;
     const xml = isOpen
       ? this._buildOpenProfileXml(ssid)
@@ -263,7 +217,7 @@ class WiFiService extends EventEmitter {
 
     try {
       fs.writeFileSync(tmpFile, xml, { encoding: 'utf8' });
-      await execAsync(`netsh wlan add profile filename="${tmpFile}" user=all`);
+      await netsh(['wlan', 'add', 'profile', `filename=${tmpFile}`, 'user=all']);
       console.log('[WIFI] Booking WiFi profile installed (SSID: [REDACTED])');
       return true;
     } catch (error) {

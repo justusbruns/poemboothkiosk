@@ -589,17 +589,14 @@ async function showUpdateScreen(currentVersion, newVersion) {
 
     const handleButtonPress = () => {
       if (state.screen !== 'update') return;
-
-      // Remove listeners
-      window.electronAPI.onKnobRotate(() => {});
-
+      releaseScreenHardware();
+      document.removeEventListener('keydown', keyHandler);
       // Resolve based on selection
       resolve(state.updateSelectedOption === 'install');
     };
 
-    // Listen for hardware events
-    window.electronAPI.onKnobRotate(handleKnobRotate);
-    window.electronAPI.onButtonPress(handleButtonPress);
+    // Route knob/button to this screen while it is up (no listener leaks)
+    claimScreenHardware(handleKnobRotate, handleButtonPress);
 
     // Also handle keyboard for dev mode
     const keyHandler = (e) => {
@@ -612,12 +609,24 @@ async function showUpdateScreen(currentVersion, newVersion) {
         state.updateSelectedOption = 'install';
         updateUpdateSelection();
       } else if (e.code === 'Enter' || e.code === 'Space') {
-        document.removeEventListener('keydown', keyHandler);
-        resolve(state.updateSelectedOption === 'install');
+        handleButtonPress();
       }
     };
     document.addEventListener('keydown', keyHandler);
   });
+}
+
+// Knob/button routing for modal setup screens (update, language). The IPC
+// listeners are registered exactly once (see the App Lifecycle section);
+// screens claim and release the handlers instead of adding listeners.
+const screenHardware = { knob: null, button: null };
+function claimScreenHardware(onKnob, onButton) {
+  screenHardware.knob = onKnob || null;
+  screenHardware.button = onButton || null;
+}
+function releaseScreenHardware() {
+  screenHardware.knob = null;
+  screenHardware.button = null;
 }
 
 /**
@@ -671,7 +680,9 @@ async function handleUpdateInstall() {
     elements.updateTitle.textContent = t('update.updating');
   }
 
-  // Listen for download progress
+  // Listen for download progress (register once; retries must not stack listeners)
+  if (!state.updateListenersAttached) {
+  state.updateListenersAttached = true;
   window.electronAPI.onUpdateProgress((progress) => {
     console.log('[RENDERER] Update download progress:', progress + '%');
     if (elements.updateProgressFill) {
@@ -694,6 +705,7 @@ async function handleUpdateInstall() {
       await window.electronAPI.updateInstall();
     }, 1000);
   });
+  } // end once-only listener registration
 
   // Start download
   const downloadResult = await window.electronAPI.updateDownload();
@@ -1007,6 +1019,7 @@ function showLanguageScreen() {
     const finish = () => {
       if (settled) return;
       settled = true;
+      releaseScreenHardware();
       document.removeEventListener('keydown', keyHandler);
       elements.languageOptions.forEach(el => el.onclick = null);
       console.log('[SETUP] Language chosen:', options[index]);
@@ -1025,14 +1038,16 @@ function showLanguageScreen() {
       else if (e.code === 'Enter' || e.code === 'Space') finish();
     };
 
-    window.electronAPI.onKnobRotate((data) => {
-      if (state.screen !== 'language' || settled) return;
-      move(data && data.direction === 'left' ? 'left' : 'right');
-    });
-    window.electronAPI.onButtonPress(() => {
-      if (state.screen !== 'language' || settled) return;
-      finish();
-    });
+    claimScreenHardware(
+      (data) => {
+        if (state.screen !== 'language' || settled) return;
+        move(data && data.direction === 'left' ? 'left' : 'right');
+      },
+      () => {
+        if (state.screen !== 'language' || settled) return;
+        finish();
+      }
+    );
     document.addEventListener('keydown', keyHandler);
     elements.languageOptions.forEach((el, i) => {
       el.onclick = () => { if (state.screen !== 'language' || settled) return; index = i; render(); finish(); };
@@ -1449,6 +1464,14 @@ function parseWiFiQR(qrData) {
 // =============================================================================
 
 function setupEventListeners() {
+  // initializeApp() can run more than once (WiFi retry, re-pairing); the
+  // listeners below must only ever be attached once or every button press
+  // reaches main twice.
+  if (state.eventListenersAttached) {
+    console.log('[RENDERER] Hardware event listeners already attached - skipping');
+    return;
+  }
+  state.eventListenersAttached = true;
   console.log('[RENDERER] Setting up hardware event listeners...');
 
   // PRODUCTION-READY: Forward ALL Space/Enter/Arrow key events to main process via IPC
@@ -3803,6 +3826,15 @@ window.addEventListener('DOMContentLoaded', () => {
 if (window.electronAPI.onAuthInvalid) {
   window.electronAPI.onAuthInvalid((reason) => handleAuthInvalid(reason));
 }
+
+// Knob/button for the modal setup screens (update, language) - registered once,
+// routed to whichever screen has claimed them (see claimScreenHardware).
+window.electronAPI.onKnobRotate((data) => {
+  if (screenHardware.knob) screenHardware.knob(data);
+});
+window.electronAPI.onButtonPress(() => {
+  if (screenHardware.button) screenHardware.button();
+});
 
 // Handle online/offline events
 window.addEventListener('online', () => {

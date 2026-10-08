@@ -525,7 +525,7 @@ class ApiClient {
       }
 
       // Send request with form data
-      const response = await this.requestMultipart('POST', '/api/kiosk/generate', formData);
+      const response = await this.requestMultipartJson('POST', '/api/kiosk/generate', formData, { timeoutMs: 60000 });
 
       if (!response.success) {
         throw new Error(response.error || 'Content generation failed');
@@ -772,16 +772,10 @@ class ApiClient {
         headers['Content-Length'] = Buffer.byteLength(bodyData);
       }
 
-      // === SECURITY-HARDENED REQUEST LOGGING ===
-      console.log(`[API] ========== REQUEST #${requestId} START ==========`);
-      console.log(`[API] Method: ${method}`);
-      console.log(`[API] Endpoint: ${endpoint}`);
-      console.log(`[API] Authorization: ${authHeader ? this.authHeaderDescription() : 'none'}`);
-      // SECURITY: Request body completely redacted (may contain tokens, images, poems)
-      if (bodyData) {
-        console.log(`[API] Request body: ${this.redactPayload(bodyData)}`);
-      }
-      console.log(`[API] ========== REQUEST #${requestId} SENT ==========`);
+      // One line per request; bodies are never logged (tokens, images, poems).
+      const startedAt = Date.now();
+      const quiet = /\/api\/kiosk\/(print-jobs|printer-status)/.test(endpoint); // 5 s pollers
+      if (!quiet) console.log(`[API] #${requestId} ${method} ${endpoint} (auth: ${authHeader ? this.authHeaderDescription() : 'none'})`);
 
       const req = https.request(reqOptions, (res) => {
         let data = '';
@@ -791,29 +785,20 @@ class ApiClient {
         });
 
         res.on('end', () => {
-          // === SECURITY-HARDENED RESPONSE LOGGING ===
-          console.log(`[API] ========== RESPONSE #${requestId} RECEIVED ==========`);
-          console.log(`[API] Status Code: ${res.statusCode}`);
-          console.log(`[API] Response Body Length: ${data.length} chars`);
-          // SECURITY: Response body completely redacted (may contain guest data, poems, images, tokens)
-          console.log(`[API] Response: ${this.redactPayload(data)}`);
-          console.log(`[API] ========== RESPONSE #${requestId} END ==========`);
+          const ms = Date.now() - startedAt;
+          const ok = res.statusCode >= 200 && res.statusCode < 300;
+          if (!ok) {
+            console.error(`[API] #${requestId} ❌ ${method} ${endpoint} HTTP ${res.statusCode} in ${ms}ms (${data.length} chars)`);
+          } else if (!quiet) {
+            console.log(`[API] #${requestId} ✅ HTTP ${res.statusCode} in ${ms}ms (${data.length} chars)`);
+          }
 
           // Validate response header fingerprint (defense-in-depth)
           if (this.pinnedAgent) {
-            const headerValid = certificatePinning.validateResponseHeader(
+            certificatePinning.validateResponseHeader(
               certificatePinning.PINNED_FINGERPRINTS[0],
               res.headers
             );
-            if (!headerValid) {
-              console.warn('[API] [SECURITY] Response header fingerprint validation failed');
-            }
-          }
-
-          if (res.statusCode < 200 || res.statusCode >= 300) {
-            console.error(`[API] ❌ REQUEST #${requestId} FAILED - HTTP ${res.statusCode}`);
-          } else {
-            console.log(`[API] ✅ REQUEST #${requestId} SUCCESS`);
           }
 
           let json = null;
@@ -856,7 +841,13 @@ class ApiClient {
   }
 
   // Multipart form data request (using built-in https module)
-  async requestMultipart(method, endpoint, formData) {
+  //   options.timeoutMs  socket inactivity timeout (default 60 s)
+  //   options.accept     Accept header (e.g. 'application/x-ndjson')
+  //   options.onChunk    (chunkString) => void  - called for every body chunk
+  //                      as it arrives (used by the NDJSON streaming client)
+  // Resolves with { statusCode, headers, data } for any HTTP status; rejects
+  // on network / pinning / timeout errors.
+  async requestMultipart(method, endpoint, formData, options = {}) {
     if (this.authMode === 'none') {
       throw new Error('Device is not paired - cannot call backend');
     }
@@ -866,9 +857,12 @@ class ApiClient {
       console.warn('[API] Pre-request token refresh failed:', err.message);
     });
 
+    const timeoutMs = options.timeoutMs || 60000;
+
     return new Promise((resolve, reject) => {
       this.requestCounter++;
       const requestId = this.requestCounter;
+      const startedAt = Date.now();
 
       const url = new URL(`${this.baseUrl}${endpoint}`);
 
@@ -877,8 +871,9 @@ class ApiClient {
         'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`,
         ...formData.getHeaders()
       };
+      if (options.accept) headers['Accept'] = options.accept;
 
-      const options = {
+      const reqOptions = {
         hostname: url.hostname,
         port: url.port || 443,
         path: url.pathname + url.search,
@@ -887,33 +882,35 @@ class ApiClient {
         agent: this.pinnedAgent // Certificate pinning enabled
       };
 
-      // === DETAILED MULTIPART REQUEST LOGGING ===
-      console.log(`[API] ========== MULTIPART REQUEST #${requestId} START ==========`);
-      console.log(`[API] Method: ${method}`);
-      console.log(`[API] Endpoint: ${endpoint}`);
-      console.log(`[API] Full URL: ${this.baseUrl}${endpoint}`);
-      console.log(`[API] Authorization: ${this.authHeaderDescription()}`);
-      console.log(`[API] Headers:`, JSON.stringify({
-        'User-Agent': headers['User-Agent'],
-        'Content-Type': headers['content-type'] || 'multipart/form-data'
-      }, null, 2));
-      console.log(`[API] ========== MULTIPART REQUEST #${requestId} SENT ==========`);
+      console.log(`[API] #${requestId} ${method} ${endpoint} (multipart, auth: ${this.authHeaderDescription()})`);
 
-      const req = https.request(options, (res) => {
+      let settled = false;
+      const fail = (error) => {
+        if (settled) return;
+        settled = true;
+        reject(error);
+      };
+
+      const req = https.request(reqOptions, (res) => {
         let data = '';
+        res.setEncoding('utf8');
 
         res.on('data', (chunk) => {
           data += chunk;
+          if (options.onChunk) {
+            try { options.onChunk(chunk, res); } catch (e) { console.warn('[API] onChunk handler error:', e.message); }
+          }
         });
 
+        res.on('aborted', () => fail(new Error('Response aborted')));
+
         res.on('end', () => {
-          // === DETAILED RESPONSE LOGGING ===
-          console.log(`[API] ========== MULTIPART RESPONSE #${requestId} RECEIVED ==========`);
-          console.log(`[API] Status Code: ${res.statusCode}`);
-          console.log(`[API] Response Body Length: ${data.length} chars`);
-          const responsePreview = data.length > 500 ? data.substring(0, 500) + '...' : data;
-          console.log(`[API] Response Preview:`, responsePreview);
-          console.log(`[API] ========== MULTIPART RESPONSE #${requestId} END ==========`);
+          if (settled) return;
+          settled = true;
+          const ms = Date.now() - startedAt;
+          const ok = res.statusCode >= 200 && res.statusCode < 300;
+          // SECURITY: never log the body - it contains the caption/poem about the guest and image data
+          (ok ? console.log : console.error)(`[API] #${requestId} ${ok ? '✅' : '❌'} HTTP ${res.statusCode} in ${ms}ms (${data.length} chars)`);
 
           // Validate response header fingerprint (defense-in-depth)
           if (this.pinnedAgent) {
@@ -926,46 +923,52 @@ class ApiClient {
             }
           }
 
-          try {
-            if (res.statusCode === 401 && this.authMode === 'device_token') {
-              // Token was fresh a moment ago, so a 401 here means the device
-              // user is gone (revoked / re-paired elsewhere).
-              this.handleCredentialsInvalid('401_multipart');
-            }
-            if (res.statusCode < 200 || res.statusCode >= 300) {
-              console.error(`[API] ❌ MULTIPART REQUEST #${requestId} FAILED - HTTP ${res.statusCode}`);
-              reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-              return;
-            }
-
-            const jsonData = JSON.parse(data);
-            console.log(`[API] ✅ MULTIPART REQUEST #${requestId} SUCCESS`);
-            resolve(jsonData);
-          } catch (error) {
-            console.error(`[API] ❌ MULTIPART REQUEST #${requestId} PARSE ERROR:`, error.message);
-            reject(new Error(`Failed to parse response: ${error.message}`));
+          if (res.statusCode === 401 && this.authMode === 'device_token') {
+            // Token was fresh a moment ago, so a 401 here means the device
+            // user is gone (revoked / re-paired elsewhere).
+            this.handleCredentialsInvalid('401_multipart');
           }
+
+          resolve({ statusCode: res.statusCode, headers: res.headers, data });
         });
+      });
+
+      req.setTimeout(timeoutMs, () => {
+        console.error(`[API] #${requestId} ❌ timeout after ${timeoutMs}ms [${method} ${endpoint}]`);
+        req.destroy(new Error(`Request timeout after ${Math.round(timeoutMs / 1000)}s`));
       });
 
       req.on('error', (error) => {
         // Check if this is a certificate pinning error
         if (error.message && error.message.includes('Certificate pinning')) {
           console.error(`[API] ❌ [SECURITY] MULTIPART REQUEST #${requestId} CERT PINNING FAILED [${method} ${endpoint}]`);
-          console.error(`[API] [SECURITY] Hostname: ${options.hostname}`);
+          console.error(`[API] [SECURITY] Hostname: ${reqOptions.hostname}`);
           console.error(`[API] [SECURITY] Error: ${error.message}`);
           // DO NOT retry - this indicates MITM attack
-          reject(new Error('Connection security verification failed. Please contact support.'));
+          fail(new Error('Connection security verification failed. Please contact support.'));
         } else {
-          // Existing error handling
-          console.error(`[API] ❌ MULTIPART REQUEST #${requestId} NETWORK ERROR [${method} ${endpoint}]:`, error);
-          reject(error);
+          console.error(`[API] #${requestId} ❌ NETWORK ERROR [${method} ${endpoint}]:`, error.message);
+          fail(error);
         }
       });
 
       // Pipe formData to request
+      formData.on('error', fail);
       formData.pipe(req);
     });
+  }
+
+  // JSON convenience wrapper around requestMultipart (non-streaming callers)
+  async requestMultipartJson(method, endpoint, formData, options = {}) {
+    const { statusCode, data } = await this.requestMultipart(method, endpoint, formData, options);
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`HTTP ${statusCode}: ${data}`);
+    }
+    try {
+      return JSON.parse(data);
+    } catch (error) {
+      throw new Error(`Failed to parse response: ${error.message}`);
+    }
   }
 
   // Get system information
