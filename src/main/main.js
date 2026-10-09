@@ -2,6 +2,15 @@ const { app, BrowserWindow, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// === Chromium switches (must be set before app is ready) ===
+// Camera capture goes through system memory instead of Chromium's D3D11
+// zero-copy path. On the kiosk NUCs (Intel UHD, 2020 driver) Chromium 152's
+// GPU-shared capture textures are not synchronised with the compositor:
+// wherever an effect overlays the live video, fast-moving subjects show a
+// lighter "ghost" (a half-overwritten frame). The classic path is what
+// Electron 28 used and is glitch-free; it costs ~5 fps on the preview only.
+app.commandLine.appendSwitch('disable-features', 'MediaFoundationD3D11VideoCapture');
+
 // === Persistent file logging ===
 // Mirror everything we console.log/warn/error to a file under userData so we can
 // debug remote kiosks. One file per session (async write stream) plus
