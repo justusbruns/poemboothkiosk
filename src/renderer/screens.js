@@ -17,6 +17,13 @@ export function releaseScreenHardware() {
   screenHardware.button = null;
 }
 
+// The encoder (real GPIO and the Pico/keyboard mock alike) reports
+// 'clockwise' / 'counterclockwise'; modal screens think in left/right.
+export function knobDirection(data) {
+  const d = data && data.direction;
+  return (d === 'counterclockwise' || d === 'counter-clockwise' || d === 'left') ? 'left' : 'right';
+}
+
 export function showScreen(screenName) {
   // Cancel typing animation when leaving result screen
   if (state.screen === 'result' && screenName !== 'result') {

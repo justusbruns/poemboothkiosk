@@ -1,8 +1,10 @@
 import { t, loadTranslations } from '../translations/index.js';
-import { claimScreenHardware, releaseScreenHardware, showScreen } from '../screens.js';
+import { claimScreenHardware, knobDirection, releaseScreenHardware, showScreen } from '../screens.js';
 import { elements, state } from '../state.js';
 
-// Enter/Space, or a click in dev) confirms. Resolves with 'nl' | 'en'.
+// Knob turns move the highlight, the button (or a click in dev) confirms.
+// Keyboard arrows/Enter reach this screen as hardware events via main, so
+// there is deliberately no keydown listener here. Resolves with 'nl' | 'en'.
 export function showLanguageScreen() {
   return new Promise((resolve) => {
     const options = elements.languageOptions.map(el => el.dataset.lang);
@@ -22,7 +24,6 @@ export function showLanguageScreen() {
       if (settled) return;
       settled = true;
       releaseScreenHardware();
-      document.removeEventListener('keydown', keyHandler);
       elements.languageOptions.forEach(el => el.onclick = null);
       console.log('[SETUP] Language chosen:', options[index]);
       resolve(options[index]);
@@ -30,27 +31,20 @@ export function showLanguageScreen() {
 
     const move = (dir) => {
       index = (index + (dir === 'left' ? -1 : 1) + options.length) % options.length;
+      console.log('[SETUP] Language highlight:', options[index]);
       render();
-    };
-
-    const keyHandler = (e) => {
-      if (state.screen !== 'language' || settled) return;
-      if (e.code === 'ArrowLeft') move('left');
-      else if (e.code === 'ArrowRight') move('right');
-      else if (e.code === 'Enter' || e.code === 'Space') finish();
     };
 
     claimScreenHardware(
       (data) => {
         if (state.screen !== 'language' || settled) return;
-        move(data && data.direction === 'left' ? 'left' : 'right');
+        move(knobDirection(data));
       },
       () => {
         if (state.screen !== 'language' || settled) return;
         finish();
       }
     );
-    document.addEventListener('keydown', keyHandler);
     elements.languageOptions.forEach((el, i) => {
       el.onclick = () => { if (state.screen !== 'language' || settled) return; index = i; render(); finish(); };
     });

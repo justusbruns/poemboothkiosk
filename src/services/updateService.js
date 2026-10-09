@@ -28,6 +28,15 @@ class UpdateService {
     autoUpdater.autoDownload = false; // We control when to download
     autoUpdater.autoInstallOnAppQuit = false; // We handle install manually
 
+    // electron-updater skips the check in an unpackaged app. For testing the
+    // update screen from a dev run, point POEMBOOTH_DEV_UPDATE_CONFIG at a
+    // dev-app-update.yml (provider/owner/repo) and lower package.json's version.
+    if (!app.isPackaged && process.env.POEMBOOTH_DEV_UPDATE_CONFIG) {
+      autoUpdater.forceDevUpdateConfig = true;
+      autoUpdater.updateConfigPath = process.env.POEMBOOTH_DEV_UPDATE_CONFIG;
+      console.log('[UPDATE] Dev update config:', process.env.POEMBOOTH_DEV_UPDATE_CONFIG);
+    }
+
     this._setupEventHandlers();
   }
 

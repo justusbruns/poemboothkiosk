@@ -1,5 +1,5 @@
 import { t } from './translations/index.js';
-import { claimScreenHardware, releaseScreenHardware, showScreen } from './screens.js';
+import { claimScreenHardware, knobDirection, releaseScreenHardware, showScreen } from './screens.js';
 import { fill } from './setup/text.js';
 import { elements, state } from './state.js';
 
@@ -28,45 +28,25 @@ export async function showUpdateScreen(currentVersion, newVersion) {
     // Show update screen
     showScreen('update');
 
-    // Set up hardware event listeners for update screen
+    // Knob: left = skip, right = install. Keyboard arrows/Enter (Pico in
+    // production, mock in dev) arrive here too, as hardware events via main —
+    // a direct keydown listener would handle every press twice.
     const handleKnobRotate = (data) => {
       if (state.screen !== 'update') return;
-
-      // Toggle between skip and install
-      if (data.direction === 'left') {
-        state.updateSelectedOption = 'skip';
-      } else {
-        state.updateSelectedOption = 'install';
-      }
+      state.updateSelectedOption = knobDirection(data) === 'left' ? 'skip' : 'install';
+      console.log('[UPDATE] Selected:', state.updateSelectedOption);
       updateUpdateSelection();
     };
 
     const handleButtonPress = () => {
       if (state.screen !== 'update') return;
       releaseScreenHardware();
-      document.removeEventListener('keydown', keyHandler);
-      // Resolve based on selection
+      console.log('[UPDATE] Confirmed:', state.updateSelectedOption);
       resolve(state.updateSelectedOption === 'install');
     };
 
     // Route knob/button to this screen while it is up (no listener leaks)
     claimScreenHardware(handleKnobRotate, handleButtonPress);
-
-    // Also handle keyboard for dev mode
-    const keyHandler = (e) => {
-      if (state.screen !== 'update') return;
-
-      if (e.code === 'ArrowLeft') {
-        state.updateSelectedOption = 'skip';
-        updateUpdateSelection();
-      } else if (e.code === 'ArrowRight') {
-        state.updateSelectedOption = 'install';
-        updateUpdateSelection();
-      } else if (e.code === 'Enter' || e.code === 'Space') {
-        handleButtonPress();
-      }
-    };
-    document.addEventListener('keydown', keyHandler);
   });
 }
 
