@@ -1,6 +1,7 @@
 import { loadJsonXHR } from '../booth/capture.js';
 import { cancelTypingAnimation } from './poem.js';
 import { resetPrintCircleIdle } from './print.js';
+import { leaveTerminalResult } from './terminal.js';
 import { hideResultCameraBackground } from './ui.js';
 import { showScreen } from '../screens.js';
 import { elements, screens, state } from '../state.js';
@@ -48,6 +49,9 @@ export function finishResultCleanup() {
   }
   // Detach the live camera background until the next generated-image result
   hideResultCameraBackground();
+
+  // Pay-first flow: close panels, drop the order (cancels a pending upsell payment)
+  leaveTerminalResult();
 
   // Reset state
   state.currentPhoto = null;

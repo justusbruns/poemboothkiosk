@@ -1,10 +1,12 @@
-import { isPaidPrintActive } from '../booth/badges.js';
+import { isPaidPrintActive, isTerminalPayMode } from '../booth/badges.js';
 import { updateResultActionLabel } from './ui.js';
 import { elements, state } from '../state.js';
 
-// screen is print-oriented — the button only prints and never returns to booth early.
+// Whether the kiosk prints on its own attached printer from the result screen:
+// free mode (hold-to-print) or the pay-first terminal flow (press-to-print of
+// the paid copies). Portal pay-to-print never prints from the kiosk button.
 export function isLocalPrintMode() {
-  return !isPaidPrintActive() &&
+  return (isTerminalPayMode() || !isPaidPrintActive()) &&
     state.printerStatus && state.printerStatus.available &&
     (state.printerStatus.status === 'ready' || state.printerStatus.status === 'printing');
 }

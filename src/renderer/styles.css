@@ -864,6 +864,273 @@ h1, h2, h3, h4, h5, h6, p {
   to { opacity: 0.8; transform: translateY(0); }
 }
 
+/* =============================================================================
+   Paywall screen (pay-first flow): the guest's photo with energy building up
+   around it until the card is tapped. Pure CSS so it stays cheap on the NUCs.
+   ============================================================================= */
+#paywall-screen {
+  background: #000;
+  position: relative;
+  overflow: hidden;
+  --energy-speed: 1;
+}
+
+.paywall-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+  filter: saturate(0.85) brightness(0.75);
+  animation: paywallPhotoBreathe calc(4s / var(--energy-speed)) ease-in-out infinite;
+}
+
+@keyframes paywallPhotoBreathe {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.03); }
+}
+
+.paywall-energy {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Two counter-rotating conic rings around the centre of the photo */
+.energy-ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 140vmin;
+  height: 140vmin;
+  margin: -70vmin 0 0 -70vmin;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg,
+    rgba(120, 200, 255, 0) 0deg, rgba(120, 200, 255, 0.55) 40deg, rgba(120, 200, 255, 0) 90deg,
+    rgba(255, 120, 220, 0) 180deg, rgba(255, 120, 220, 0.45) 220deg, rgba(255, 120, 220, 0) 270deg);
+  -webkit-mask: radial-gradient(circle, transparent 58%, #000 62%, #000 70%, transparent 74%);
+          mask: radial-gradient(circle, transparent 58%, #000 62%, #000 70%, transparent 74%);
+  animation: energySpin calc(6s / var(--energy-speed)) linear infinite;
+  opacity: 0.9;
+}
+
+.energy-ring--2 {
+  width: 110vmin;
+  height: 110vmin;
+  margin: -55vmin 0 0 -55vmin;
+  animation-direction: reverse;
+  animation-duration: calc(4s / var(--energy-speed));
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 66%, #000 72%, transparent 76%);
+          mask: radial-gradient(circle, transparent 62%, #000 66%, #000 72%, transparent 76%);
+}
+
+@keyframes energySpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Horizontal scanner line sweeping the photo */
+.energy-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 18vh;
+  top: -18vh;
+  background: linear-gradient(to bottom, rgba(140, 220, 255, 0), rgba(140, 220, 255, 0.35), rgba(255, 255, 255, 0.8), rgba(140, 220, 255, 0));
+  animation: energyScan calc(3.2s / var(--energy-speed)) ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+
+@keyframes energyScan {
+  0%   { top: -18vh; }
+  100% { top: 100vh; }
+}
+
+/* Drifting particles: layered radial gradients scrolling upwards */
+.energy-particles {
+  position: absolute;
+  inset: -20% 0 0 0;
+  background-image:
+    radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 2px, transparent 3px),
+    radial-gradient(circle, rgba(150, 220, 255, 0.9) 0 1.5px, transparent 2.5px),
+    radial-gradient(circle, rgba(255, 160, 230, 0.8) 0 1px, transparent 2px);
+  background-size: 180px 240px, 120px 160px, 90px 130px;
+  background-position: 10px 20px, 60px 80px, 30px 10px;
+  animation: energyRise calc(9s / var(--energy-speed)) linear infinite;
+  opacity: 0.8;
+}
+
+@keyframes energyRise {
+  to { transform: translateY(-240px); }
+}
+
+/* Escalation once the payment is in: everything speeds up and brightens */
+#paywall-screen.charged { --energy-speed: 3; }
+#paywall-screen.charged .paywall-photo { filter: saturate(1.3) brightness(1.15); }
+#paywall-screen.charged .energy-ring { opacity: 1; }
+
+/* The screen hangs inside an oval enclosure: keep the bottom texts within the
+   central ~65% of the width and well above the bottom edge. */
+.paywall-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  padding: 2rem 18% 6rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  text-align: center;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.6) 60%, rgba(0, 0, 0, 0) 100%);
+}
+
+.paywall-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 2rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 0.4rem;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+
+.paywall-price-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.9rem 2.2rem;
+  border-radius: 1.4rem;
+  background: rgba(255, 255, 255, 0.12);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(6px);
+  animation: paywallPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes paywallPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.35); }
+  50%      { box-shadow: 0 0 0 14px rgba(255, 255, 255, 0); }
+}
+
+.paywall-price {
+  font-family: 'Inter', sans-serif;
+  font-size: 3.6rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+
+.paywall-price.bump { transform: scale(1.12); }
+
+.paywall-qty {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  margin-top: 0.35rem;
+}
+
+.paywall-tap {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #fff;
+  margin: 0.4rem 0 0;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+}
+
+.paywall-hint {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+  margin: 0;
+}
+
+.paywall-status {
+  font-family: 'Inter', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #ffd166;
+  margin: 0.2rem 0 0;
+  min-height: 1.3rem;
+}
+
+.paywall-status.error { color: #ff6b6b; }
+.paywall-status.ok { color: #4ade80; }
+
+/* Processing screen escalation after payment ("theater") */
+#processing-screen.theater .processing-photo {
+  animation: theaterPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes theaterPulse {
+  0%, 100% { filter: saturate(1) brightness(1); transform: scale(1); }
+  50%      { filter: saturate(1.4) brightness(1.2); transform: scale(1.02); }
+}
+
+/* Result screen, pay-first flow: hint line + retake/upsell panel */
+.result-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 3.4rem;
+  transform: translateX(-50%);
+  width: 66%; /* oval enclosure: the bottom corners of the screen are hidden */
+  margin: 0;
+  z-index: 3;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: #fff;
+  text-align: center;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.8);
+}
+
+.result-panel {
+  position: absolute;
+  left: 50%;
+  top: 40%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  width: 64%;
+  padding: 1.6rem 1.6rem;
+  border-radius: 1.6rem;
+  background: rgba(0, 0, 0, 0.78);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  color: #fff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.result-panel-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin: 0 0 0.6rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.result-panel-value {
+  font-size: 2.6rem;
+  font-weight: 800;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.result-panel-sub {
+  font-size: 1.05rem;
+  font-weight: 500;
+  margin: 0.7rem 0 0;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.result-panel.pending .result-panel-sub { color: #ffd166; }
+.result-panel.error .result-panel-sub { color: #ff6b6b; }
+
 /* Result Screen - Blurred photo background + poem overlay + circles */
 #result-screen {
   background: #000;

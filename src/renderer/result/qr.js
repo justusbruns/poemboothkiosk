@@ -1,5 +1,6 @@
-import { isPaidPrintActive } from '../booth/badges.js';
+import { isPaidPrintActive, isTerminalPayMode } from '../booth/badges.js';
 import { resetPrintCircleIdle, updatePrintContainerVisibility } from './print.js';
+import { enterTerminalResult } from './terminal.js';
 import { triggerGlassWipe } from './transitions.js';
 import { updateResultActionLabel, updateResultPaymentUI } from './ui.js';
 import { elements, state } from '../state.js';
@@ -8,6 +9,7 @@ export function showQRCode(publicViewUrl) {
   console.log('[RENDERER] Showing QR code for:', publicViewUrl);
 
   // Fresh print allowance for this result, and a clean idle print circle
+  // (pay-first: what was paid on the terminal; set in enterTerminalResult)
   state.printsRemaining = state.maxPrints;
   resetPrintCircleIdle();
 
@@ -95,14 +97,26 @@ export function showQRCode(publicViewUrl) {
   // Paid-mode extras: watermark over the image + pulsing attention glow
   updateResultPaymentUI();
 
+  if (isTerminalPayMode() && state.order) {
+    // Pay-first: print/retake/upsell phases drive the timer from here on
+    enterTerminalResult();
+    return;
+  }
+
   // Start countdown timer (longer in paid mode)
   start30SecondTimer();
 }
 
-// 30-second countdown with glass wipe animation
+// Default auto-return countdown: pay-to-print (portal) gives guests more time to
+// scan, pay, save and print; otherwise 30s.
 export function start30SecondTimer() {
-  // Pay-to-print gives guests more time to scan, pay, save and print; otherwise 30s
-  const TIMER_DURATION = isPaidPrintActive() ? 60000 : 30000; // 60s when paying to print, else 30s
+  startResultTimer(isPaidPrintActive() ? 60000 : 30000);
+}
+
+// Countdown ring on the QR circle; wipes back to the booth when it runs out.
+// Restartable: a running countdown is replaced by the new one.
+export function startResultTimer(TIMER_DURATION) {
+  cancelResultTimer();
   const circumference = 440; // Match CSS stroke-dasharray value (r=70px)
   let startTime = Date.now();
 
@@ -131,12 +145,13 @@ export function start30SecondTimer() {
     if (remaining > 0) {
       state.timerAnimationFrame = requestAnimationFrame(updateTimer);
     } else {
-      // Timer expired - check if print is in progress
-      if (state.printHoldStart || state.isPrinting) {
-        console.log('[RENDERER] Countdown expired but print in progress - waiting...');
-        // Keep checking until print completes
+      // Timer expired - check if a print (or a terminal payment) is in progress
+      const busy = () => state.printHoldStart || state.isPrinting || state.terminalBusy || state.resultPhase === 'printing';
+      if (busy()) {
+        console.log('[RENDERER] Countdown expired but print/payment in progress - waiting...');
+        // Keep checking until it completes
         state.timerAnimationFrame = requestAnimationFrame(() => {
-          if (!state.printHoldStart && !state.isPrinting) {
+          if (!busy()) {
             console.log('[RENDERER] Print complete - now triggering glass wipe');
             state.timerAnimationFrame = null;
             triggerGlassWipe();
@@ -156,14 +171,15 @@ export function start30SecondTimer() {
   updateTimer();
 }
 
-// Cancel 30-second timer (e.g., when user starts printing)
-export function cancel30SecondTimer() {
+// Cancel the auto-return timer (e.g., when user starts printing)
+export function cancelResultTimer() {
   if (state.timerAnimationFrame) {
-    console.log('[RENDERER] Cancelling 30-second auto-return timer');
+    console.log('[RENDERER] Cancelling auto-return timer');
     cancelAnimationFrame(state.timerAnimationFrame);
     state.timerAnimationFrame = null;
   }
 }
+export const cancel30SecondTimer = cancelResultTimer;
 
 // Cancel the auto-return timer and wipe back to the booth for the next guest.
 export function returnToBoothFromResult() {

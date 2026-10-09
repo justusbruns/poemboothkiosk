@@ -1,32 +1,85 @@
 import { t, getCurrentLanguage } from '../translations/index.js';
 import { elements, state } from '../state.js';
 
-// True when the guest has to pay (a positive print or download price is configured)
-export function isPaymentActive() {
+// Fake tiers for --mock-terminal when the booking has none configured
+const MOCK_TIERS = { '1': 500, '2': 700, '3': 900, '4': 1100 };
+
+function paymentConfig() {
   const pay = state.kioskConfig && state.kioskConfig.payment;
-  if (!pay) return false;
-  const printPaid = pay.print_enabled && pay.print_tiers &&
-    Object.values(pay.print_tiers).some(v => Number(v) > 0);
-  const downloadPaid = pay.download_enabled && Number(pay.download_price) > 0;
-  return !!(printPaid || downloadPaid);
+  if (state.mockTerminal) {
+    const hasTiers = pay && pay.print_tiers && Object.values(pay.print_tiers).some(v => Number(v) > 0);
+    return { currency: 'EUR', ...(pay || {}), mode: 'terminal', print_enabled: true,
+      print_tiers: hasTiers ? pay.print_tiers : MOCK_TIERS };
+  }
+  return pay || null;
 }
 
-// True only when guests must PAY TO PRINT (portal paid printing is enabled with a
-// positive tier). The kiosk's free hold-to-print is suppressed in that case so
-// prints go through the paid portal flow. Paid *downloads* don't affect this.
-export function isPaidPrintActive() {
-  const pay = state.kioskConfig && state.kioskConfig.payment;
-  if (!pay) return false;
-  return !!(pay.print_enabled && pay.print_tiers &&
+function hasPaidTiers(pay) {
+  return !!(pay && pay.print_enabled && pay.print_tiers &&
     Object.values(pay.print_tiers).some(v => Number(v) > 0));
+}
+
+// Pay-first flow: the guest pays on the booth's own card terminal BEFORE the
+// portrait is generated (payment.mode === 'terminal'). The kiosk prints itself.
+export function isTerminalPayMode() {
+  const pay = paymentConfig();
+  return !!(pay && pay.mode === 'terminal' && hasPaidTiers(pay));
+}
+
+// True when the guest has to pay (a positive print or download price is configured)
+export function isPaymentActive() {
+  const pay = paymentConfig();
+  if (!pay) return false;
+  const downloadPaid = pay.download_enabled && Number(pay.download_price) > 0;
+  return !!(hasPaidTiers(pay) || downloadPaid);
+}
+
+// True only when guests must PAY TO PRINT *through the portal* (paid printing is
+// enabled with a positive tier and the booking is not in terminal mode). The
+// kiosk's free hold-to-print is suppressed in that case so prints go through the
+// paid portal flow. Paid *downloads* and the terminal flow don't affect this.
+export function isPaidPrintActive() {
+  const pay = paymentConfig();
+  return hasPaidTiers(pay) && pay.mode !== 'terminal';
+}
+
+// Sorted quantities that have a price (e.g. [1, 2, 3, 5])
+export function getTierQuantities() {
+  const pay = paymentConfig();
+  if (!pay || !pay.print_tiers) return [];
+  return Object.keys(pay.print_tiers)
+    .map(Number)
+    .filter(n => Number.isInteger(n) && n > 0 && Number(pay.print_tiers[String(n)]) > 0)
+    .sort((a, b) => a - b);
+}
+
+// Total price in cents for `quantity` prints, or null when that tier isn't offered
+export function getTierPriceCents(quantity) {
+  const pay = paymentConfig();
+  if (!pay || !pay.print_tiers) return null;
+  const v = Number(pay.print_tiers[String(quantity)]);
+  return Number.isFinite(v) && v > 0 ? v : null;
+}
+
+// Price for `extra` more prints when `already` are paid (difference to that tier)
+export function getExtraPrintPriceCents(already, extra) {
+  const target = getTierPriceCents(already + extra);
+  if (target === null) return null;
+  if (already === 0) return target;
+  const base = getTierPriceCents(already);
+  if (base === null) return null;
+  return target - base > 0 ? target - base : null;
+}
+
+export function getCurrency() {
+  const pay = paymentConfig();
+  return (pay && pay.currency) || 'EUR';
 }
 
 // Cents for a single print (first/smallest tier = most expensive per print), or null
 export function getFirstPrintPriceCents() {
-  const pay = state.kioskConfig && state.kioskConfig.payment;
-  if (!pay || !pay.print_tiers) return null;
-  const qtys = Object.keys(pay.print_tiers).map(Number).filter(n => !Number.isNaN(n)).sort((a, b) => a - b);
-  return qtys.length ? pay.print_tiers[String(qtys[0])] : null;
+  const qtys = getTierQuantities();
+  return qtys.length ? getTierPriceCents(qtys[0]) : null;
 }
 
 // Format a price (in minor units / cents) with the right currency for the active language
@@ -45,7 +98,7 @@ export function formatPrice(cents, currency) {
 // Show the single-print price badge on the booth when paid printing is enabled.
 // Shows the first tier (one print) — the most expensive per-print rate.
 export function updatePriceBadge() {
-  const pay = state.kioskConfig && state.kioskConfig.payment;
+  const pay = paymentConfig();
   const firstTierCents = getFirstPrintPriceCents();
 
   // Price circle on the booth (single-print cost)

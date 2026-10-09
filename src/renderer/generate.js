@@ -5,10 +5,13 @@ import { updatePrintContainerVisibility } from './result/print.js';
 import { showQRCode } from './result/qr.js';
 import { showResultCameraBackground, updateResultActionLabel, updateResultPaymentUI } from './result/ui.js';
 import { showScreen } from './screens.js';
-import { elements, state } from './state.js';
+import { elements, screens, state } from './state.js';
 import { showNotification, updateProgress } from './ui.js';
 
-export async function processPhoto() {
+// opts.orderId: paid kiosk order (pay-first terminal flow) that entitles this
+// generation; opts.retake: the free second generation of that order.
+export async function processPhoto(opts = {}) {
+  const orderId = opts.orderId || null;
   try {
     // Cancel any in-progress typing animation from previous session
     cancelTypingAnimation();
@@ -21,7 +24,8 @@ export async function processPhoto() {
 
     console.log('[RENDERER] Processing photo, length:', state.currentPhoto.length);
 
-    // Show processing screen with captured photo
+    // Show processing screen with captured photo ("theater" escalation after a payment)
+    if (screens.processing) screens.processing.classList.toggle('theater', !!orderId);
     showScreen('processing');
 
     // Display the captured photo full-screen
@@ -57,6 +61,7 @@ export async function processPhoto() {
       metadata.style = selectedStyle.id || selectedStyle.name;
       console.log('[RENDERER] Using selected style:', selectedStyle.name);
     }
+    if (orderId) metadata.order_id = orderId;
 
     // Upload a downscaled copy: the backend caption model downsamples anyway,
     // and a 4K/q0.95 JPEG (~1.5 MB) was the single biggest avoidable delay.
@@ -103,6 +108,14 @@ export async function processPhoto() {
     state.generateHandler = null;
     state.isProcessing = false;  // Explicit reset on error
     destroyLottieAnimation();    // Clean up animation
+    if (orderId) {
+      // Pay-first: the backend refunds the terminal payment when the first
+      // generation fails (402 = the order was not accepted at all).
+      const paymentRejected = /HTTP 402/.test(error && error.message || '');
+      state.order = null;
+      showNotification(t(paymentRejected ? 'error.paymentRequired' : 'error.generationFailedRefund'));
+      return;
+    }
     showNotification(t('error.processingFailed'));
   }
 }
@@ -232,6 +245,13 @@ export function handleGenerateEvent(evt) {
       state.currentPrintUrl = null;
       console.error('[RENDERER] Backend render failed:', g.renderError);
       updatePrintContainerVisibility();
+      if (state.order) {
+        // Pay-first: no print asset means nothing to hand over; the backend
+        // refunded the terminal payment (first attempt). Back to the booth.
+        state.order = null;
+        showNotification(t('error.generationFailedRefund'));
+        break;
+      }
       // Keep the poem on screen; just tell the guest there is no download/print
       showToast(t('error.renderFailed'));
       break;

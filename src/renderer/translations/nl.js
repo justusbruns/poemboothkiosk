@@ -94,7 +94,37 @@ export const nl = {
     scanToPrintAndSave: 'Scan om te Bewaren<br/>& Printen',
     printForJust: 'Print voor maar',
     scanQrNow: 'Scan nu de QR-code',
-    holdToPrint: 'Knop lang indrukken om te printen'
+    holdToPrint: 'Knop lang indrukken om te printen',
+    // Pay-first (terminal) flow
+    pressToPrint: 'Druk om te printen',
+    hintPrint: 'Blij mee? Druk op de grote knop om direct te printen!',
+    hintRetake: 'Toch liever iets anders? Draai voor 1 GRATIS herkansing.',
+    hintPrinting: 'Jouw meesterwerk wordt nu afgedrukt, kijk onderaan!',
+    hintUpsell: 'Nog eentje extra voor thuis? Draai om te kiezen, tap je pas om direct bij te printen.',
+    hintDone: 'Klaar! Scan de QR-code om je meesterwerk te downloaden.',
+    retakeTitle: 'Kies een andere stijl',
+    retakeSub: 'Druk op de grote knop om opnieuw te maken (gratis)',
+    upsellTitle: 'Extra prints',
+    upsellPrints: '+{count} print(s)',
+    upsellTap: 'Tap je pas op de terminal',
+    upsellUpdating: 'Bedrag aanpassen…',
+    upsellPaid: 'Betaald! Printen...',
+    upsellFailed: 'Betaling mislukt, draai om het opnieuw te proberen',
+    upsellCancelled: 'Geen betaling ontvangen'
+  },
+  paywall: {
+    title: 'Klaar voor de transformatie?',
+    tap: 'Tap je pas om de AI te ontketenen!',
+    turnForMore: 'Ben je met een groepje? Draai voor extra prints!',
+    onePrint: '1 print',
+    nPrints: '{count} prints',
+    waitingTerminal: 'Wachten op de terminal…',
+    updatingTerminal: 'Bedrag aanpassen…',
+    paid: 'Betaald! De AI gaat aan de slag…',
+    declined: 'Betaling mislukt, probeer het nog eens',
+    declinedFinal: 'De betaling is niet gelukt. Druk op de knop om opnieuw te beginnen.',
+    retrying: 'Geen betaling ontvangen, nog een keer…',
+    timeout: 'Geen betaling ontvangen. Druk op de knop om opnieuw te beginnen!'
   },
   terms: {
     agree: 'Door te starten ga je akkoord met onze voorwaarden en privacybeleid'
@@ -111,6 +141,10 @@ export const nl = {
     buttonTryAgain: 'Knop: Probeer opnieuw',
     generationFailed: 'Oeps! De afbeelding is niet helemaal goed gegenereerd. Laten we nog een foto proberen!',
     processingFailed: 'Dit keer werkte het niet. Druk op de knop om het opnieuw te proberen!',
-    renderFailed: 'Je gedicht is klaar, maar de afbeelding kon niet gemaakt worden. Probeer een nieuwe foto voor een download of print.'
+    renderFailed: 'Je gedicht is klaar, maar de afbeelding kon niet gemaakt worden. Probeer een nieuwe foto voor een download of print.',
+    paymentRequired: 'De betaling kon niet bevestigd worden. Druk op de knop om opnieuw te beginnen.',
+    terminalUnavailable: 'De betaalterminal is even niet beschikbaar. Probeer het later opnieuw.',
+    paymentFailed: 'De betaling is niet gelukt. Druk op de knop om opnieuw te beginnen.',
+    generationFailedRefund: 'Oeps, dit keer werkte het niet, je betaling is teruggedraaid. Druk op de knop om het opnieuw te proberen!'
   }
 };

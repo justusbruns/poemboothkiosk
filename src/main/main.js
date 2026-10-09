@@ -102,6 +102,13 @@ const FORCE_PAIR = process.argv.includes('--force-pair');
 // Mock printer: use in dev mode by default, unless --real-printer is specified
 const USE_MOCK_PRINTER = process.argv.includes('--mock-printer') ||
                          (IS_DEV && !process.argv.includes('--real-printer'));
+// Mock card terminal: --mock-terminal answers the kiosk-order IPC locally (paid
+// after a few seconds) and forces the pay-first flow in the renderer, so the
+// whole paywall → generate → print → upsell flow can be tested without a
+// terminal or a terminal-mode booking. --mock-terminal=fail → declined cards.
+const MOCK_TERMINAL_ARG = process.argv.find(a => a.startsWith('--mock-terminal'));
+const USE_MOCK_TERMINAL = !!MOCK_TERMINAL_ARG;
+const MOCK_TERMINAL_OUTCOME = (MOCK_TERMINAL_ARG && MOCK_TERMINAL_ARG.split('=')[1]) || 'paid';
 let mainWindow;
 let rendererCrashTimes = [];
 let windowRecreateTimes = [];   // kiosk-mode window recreations (bounded)
@@ -584,6 +591,7 @@ ipcMain.handle('get-flags', async () => {
     isStaging: IS_STAGING,
     forceWifi: FORCE_WIFI,
     forcePair: FORCE_PAIR,
+    mockTerminal: USE_MOCK_TERMINAL,
     perfProbe: process.argv.includes('--perf-probe')
   };
 });
@@ -868,6 +876,74 @@ ipcMain.handle('api:upload-image', async (event, imageBuffer, sessionId, quality
   } catch (error) {
     console.error('[MAIN] Upload error:', error);
     throw error;
+  }
+});
+
+// =============================================================================
+// IPC Handlers - Kiosk orders (pay-first card terminal)
+// =============================================================================
+
+// --mock-terminal: in-memory orders that settle by themselves
+const mockOrders = new Map();
+function mockOrderView(o) {
+  return {
+    order_id: o.id, kind: o.kind, status: o.status, failure_reason: o.failure_reason,
+    quantity: o.quantity, amount_cents: o.amount_cents, currency: 'EUR',
+    session_id: o.session_id, generations_left: o.kind === 'generation' ? 2 : 0
+  };
+}
+function mockCreateOrder(kind, quantity, sessionId) {
+  const id = require('crypto').randomUUID();
+  const o = { id, kind, quantity, session_id: sessionId || null, status: 'pending', failure_reason: null, amount_cents: null };
+  mockOrders.set(id, o);
+  const settle = MOCK_TERMINAL_OUTCOME === 'fail' ? ['failed', 'refusal']
+    : MOCK_TERMINAL_OUTCOME === 'timeout' ? ['cancelled', 'cancelled']
+    : ['paid', null];
+  setTimeout(() => {
+    if (o.status === 'pending') { o.status = settle[0]; o.failure_reason = settle[1]; }
+    console.log(`[MAIN][MOCK-TERMINAL] order ${id} → ${o.status}`);
+  }, MOCK_TERMINAL_OUTCOME === 'timeout' ? 8000 : 3000);
+  console.log(`[MAIN][MOCK-TERMINAL] created ${kind} ×${quantity} order ${id}`);
+  return mockOrderView(o);
+}
+
+ipcMain.handle('order:create', async (event, kind, quantity, sessionId = null) => {
+  if (USE_MOCK_TERMINAL) return mockCreateOrder(kind, quantity, sessionId);
+  if (!apiClient) throw new Error('API client not initialized');
+  try {
+    return await apiClient.createOrder(kind, quantity, sessionId);
+  } catch (error) {
+    console.error('[MAIN] Order create error:', error.message);
+    // Plain object: Electron strips custom props from thrown errors
+    return { error: error.code || 'order_failed', status: error.status || 0, message: error.message };
+  }
+});
+
+ipcMain.handle('order:status', async (event, orderId) => {
+  if (USE_MOCK_TERMINAL) {
+    const o = mockOrders.get(orderId);
+    return o ? mockOrderView(o) : { error: 'order_not_found', status: 404 };
+  }
+  if (!apiClient) throw new Error('API client not initialized');
+  try {
+    return await apiClient.getOrder(orderId);
+  } catch (error) {
+    return { error: 'status_failed', message: error.message };
+  }
+});
+
+ipcMain.handle('order:cancel', async (event, orderId, reason) => {
+  if (USE_MOCK_TERMINAL) {
+    const o = mockOrders.get(orderId);
+    if (o && o.status === 'pending') { o.status = 'cancelled'; o.failure_reason = reason || 'cancelled_by_kiosk'; }
+    return o ? mockOrderView(o) : { error: 'order_not_found', status: 404 };
+  }
+  if (!apiClient) throw new Error('API client not initialized');
+  try {
+    return await apiClient.cancelOrder(orderId, reason);
+  } catch (error) {
+    console.warn('[MAIN] Order cancel error:', error.message);
+    return { error: 'cancel_failed', message: error.message };
   }
 });
 

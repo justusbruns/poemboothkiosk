@@ -66,7 +66,37 @@ export const fr = {
     scanToPrintAndSave: 'Scannez pour Sauver<br/>et Imprimer',
     printForJust: 'Imprime pour seulement',
     scanQrNow: 'Scanne le QR code maintenant',
-    holdToPrint: 'Maintenez le bouton pour imprimer'
+    holdToPrint: 'Maintenez le bouton pour imprimer',
+    // Pay-first (terminal) flow
+    pressToPrint: 'Appuyez pour imprimer',
+    hintPrint: 'Ça vous plaît ? Appuyez sur le grand bouton pour imprimer tout de suite !',
+    hintRetake: 'Plutôt autre chose ? Tournez le bouton pour 1 nouvel essai GRATUIT.',
+    hintPrinting: 'Votre chef-d\'œuvre s\'imprime, regardez en bas !',
+    hintUpsell: 'Un de plus pour la maison ? Tournez pour choisir, tapez votre carte pour imprimer en plus.',
+    hintDone: 'Terminé ! Scannez le QR code pour télécharger votre chef-d\'œuvre.',
+    retakeTitle: 'Choisissez un autre style',
+    retakeSub: 'Appuyez sur le grand bouton pour recommencer (gratuit)',
+    upsellTitle: 'Tirages supplémentaires',
+    upsellPrints: '+{count} tirage(s)',
+    upsellTap: 'Tapez votre carte sur le terminal',
+    upsellUpdating: 'Mise à jour du montant…',
+    upsellPaid: 'Payé ! Impression...',
+    upsellFailed: 'Paiement refusé, tournez le bouton pour réessayer',
+    upsellCancelled: 'Aucun paiement reçu'
+  },
+  paywall: {
+    title: 'Prêt pour la transformation ?',
+    tap: 'Tapez votre carte pour libérer l\'IA !',
+    turnForMore: 'En groupe ? Tournez le bouton pour des tirages en plus !',
+    onePrint: '1 tirage',
+    nPrints: '{count} tirages',
+    waitingTerminal: 'En attente du terminal…',
+    updatingTerminal: 'Mise à jour du montant…',
+    paid: 'Payé ! L\'IA se met au travail…',
+    declined: 'Paiement refusé, veuillez réessayer',
+    declinedFinal: 'Le paiement n\'a pas abouti. Appuyez sur le bouton pour recommencer.',
+    retrying: 'Aucun paiement reçu, nouvel essai…',
+    timeout: 'Aucun paiement reçu. Appuyez sur le bouton pour recommencer !'
   },
   terms: {
     agree: 'En commençant, vous acceptez nos conditions et notre politique de confidentialité'

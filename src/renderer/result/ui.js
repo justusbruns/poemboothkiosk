@@ -1,5 +1,5 @@
 import { t } from '../translations/index.js';
-import { formatPrice, getFirstPrintPriceCents, isPaidPrintActive } from '../booth/badges.js';
+import { formatPrice, getFirstPrintPriceCents, isPaidPrintActive, isTerminalPayMode } from '../booth/badges.js';
 import { applyCameraRotation } from '../booth/camera.js';
 import { elements, state } from '../state.js';
 
@@ -8,6 +8,12 @@ export function updateResultActionLabel() {
   if (!elements.qrLabel) return;
 
   const pay = state.kioskConfig && state.kioskConfig.payment;
+
+  // Pay-first (terminal): prints come out of the booth; the QR only saves the photo
+  if (isTerminalPayMode()) {
+    elements.qrLabel.innerHTML = t('result.scanToSave');
+    return;
+  }
 
   // Pay-to-print: a stronger call-to-action with the price ("Print for just €4 / Scan the QR code now")
   if (isPaidPrintActive()) {

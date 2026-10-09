@@ -37,6 +37,11 @@ export const state = {
   isCapturing: false,         // true from countdown start until back on the idle booth screen
   typingTimeoutId: null,      // Current pending typing animation timeout
   typingSessionId: null,      // Unique ID for current typing session
+  // Pay-first (card terminal) flow
+  mockTerminal: false,        // --mock-terminal: force the terminal flow with locally settled orders
+  order: null,                // active kiosk order { id, kind, status, quantity, amountCents, generationsLeft }
+  terminalBusy: false,        // a terminal payment is pending on the result screen (upsell) - don't expire
+  resultPhase: null,          // terminal result screen: 'reveal' | 'retake' | 'printed' | 'upsell'
   // Update state
   updateAvailable: false,
   updateInfo: null,
@@ -51,6 +56,7 @@ export const screens = {
   language: document.getElementById('language-screen'),
   pairing: document.getElementById('pairing-screen'),
   booth: document.getElementById('booth-screen'),
+  paywall: document.getElementById('paywall-screen'),
   processing: document.getElementById('processing-screen'),
   result: document.getElementById('result-screen'),
   error: document.getElementById('error-screen')
@@ -85,6 +91,21 @@ export const elements = {
   priceBadge: document.getElementById('price-badge'),
   priceAmount: document.getElementById('price-amount'),
   resultWatermark: document.getElementById('result-watermark'),
+  // Paywall screen (pay-first on the card terminal)
+  paywallPhoto: document.getElementById('paywall-photo'),
+  paywallEnergy: document.getElementById('paywall-energy'),
+  paywallTitle: document.getElementById('paywall-title'),
+  paywallPrice: document.getElementById('paywall-price'),
+  paywallQty: document.getElementById('paywall-qty'),
+  paywallTap: document.getElementById('paywall-tap'),
+  paywallHint: document.getElementById('paywall-hint'),
+  paywallStatus: document.getElementById('paywall-status'),
+  // Result screen, terminal flow: hint line + retake/upsell panel
+  resultHint: document.getElementById('result-hint'),
+  resultPanel: document.getElementById('result-panel'),
+  resultPanelTitle: document.getElementById('result-panel-title'),
+  resultPanelValue: document.getElementById('result-panel-value'),
+  resultPanelSub: document.getElementById('result-panel-sub'),
   processingPhoto: document.getElementById('processing-photo'),
   processingStatus: document.getElementById('processing-status'),
   progressFill: document.getElementById('progress-fill'),

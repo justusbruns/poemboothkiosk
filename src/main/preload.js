@@ -27,6 +27,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiUploadImage: (imageBuffer, sessionId) => ipcRenderer.invoke('api:upload-image', imageBuffer, sessionId),
   apiLogPrint: (sessionId) => ipcRenderer.invoke('api:log-print', sessionId),
 
+  // Kiosk orders (pay-first on the booth's card terminal; brokered by the backend)
+  orderCreate: (kind, quantity, sessionId) => ipcRenderer.invoke('order:create', kind, quantity, sessionId),
+  orderStatus: (orderId) => ipcRenderer.invoke('order:status', orderId),
+  orderCancel: (orderId, reason) => ipcRenderer.invoke('order:cancel', orderId, reason),
+
   // WiFi Service
   wifiConnect: (wifiConfig) => ipcRenderer.invoke('wifi:connect', wifiConfig),
   wifiInstallProfile: (wifiConfig) => ipcRenderer.invoke('wifi:install-profile', wifiConfig),

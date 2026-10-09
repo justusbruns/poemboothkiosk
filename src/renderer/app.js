@@ -197,12 +197,16 @@ export function isNetworkError(error) {
 }
 
 export async function initializeApp() {
+  // Resolves when the style coverflow images are loaded (set once the config arrives)
+  let styleImagesReady = Promise.resolve();
   try {
     updateStatus('loading', 'Starting...');
 
     // Get debug flags from main process
     const flags = await window.electronAPI.getFlags();
     console.log('[RENDERER] Debug flags:', flags);
+    // --mock-terminal: force the pay-first flow with locally settled orders
+    state.mockTerminal = !!flags.mockTerminal;
 
     // Check for force WiFi mode (for testing)
     if (flags.forceWifi) {

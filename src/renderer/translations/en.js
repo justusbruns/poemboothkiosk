@@ -94,7 +94,37 @@ export const en = {
     scanToPrintAndSave: 'Scan to Save<br/>& Print',
     printForJust: 'Print for just',
     scanQrNow: 'Scan the QR code now',
-    holdToPrint: 'Hold button to print'
+    holdToPrint: 'Hold button to print',
+    // Pay-first (terminal) flow
+    pressToPrint: 'Press to print',
+    hintPrint: 'Happy with it? Press the big button to print right away!',
+    hintRetake: 'Rather something else? Turn the knob for 1 FREE retake.',
+    hintPrinting: 'Your masterpiece is printing, look below!',
+    hintUpsell: 'One more for home? Turn to choose, tap your card to print extra copies.',
+    hintDone: 'Done! Scan the QR code to download your masterpiece.',
+    retakeTitle: 'Pick another style',
+    retakeSub: 'Press the big button to create it again (free)',
+    upsellTitle: 'Extra prints',
+    upsellPrints: '+{count} print(s)',
+    upsellTap: 'Tap your card on the terminal',
+    upsellUpdating: 'Updating the amount…',
+    upsellPaid: 'Paid! Printing...',
+    upsellFailed: 'Payment failed, turn the knob to try again',
+    upsellCancelled: 'No payment received'
+  },
+  paywall: {
+    title: 'Ready for the transformation?',
+    tap: 'Tap your card to unleash the AI!',
+    turnForMore: 'With a group? Turn the knob for extra prints!',
+    onePrint: '1 print',
+    nPrints: '{count} prints',
+    waitingTerminal: 'Waiting for the terminal…',
+    updatingTerminal: 'Updating the amount…',
+    paid: 'Paid! The AI is getting to work…',
+    declined: 'Payment failed, please try again',
+    declinedFinal: 'The payment did not go through. Press the button to start over.',
+    retrying: 'No payment received, one more try…',
+    timeout: 'No payment received. Press the button to start over!'
   },
   terms: {
     agree: 'By starting you agree to our Terms & Privacy Policy'
@@ -111,6 +141,10 @@ export const en = {
     buttonTryAgain: 'Button: Try again',
     generationFailed: 'Oops! The image didn\'t generate quite right. Let\'s try another photo!',
     processingFailed: 'Something didn\'t work this time. Press the button to try again!',
-    renderFailed: 'Your poem is ready, but the picture could not be made. Try another photo for a download or print.'
+    renderFailed: 'Your poem is ready, but the picture could not be made. Try another photo for a download or print.',
+    paymentRequired: 'The payment could not be confirmed. Press the button to start over.',
+    terminalUnavailable: 'The card terminal is unavailable right now. Please try again later.',
+    paymentFailed: 'The payment did not go through. Press the button to start over.',
+    generationFailedRefund: 'Oops, it didn\'t work this time, your payment has been reversed. Press the button to try again!'
   }
 };

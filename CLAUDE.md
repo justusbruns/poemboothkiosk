@@ -48,6 +48,7 @@ These flags can be combined with `electron .`:
 - `--real-printer` — Force real printer in dev mode
 - `--force-wifi` — Force WiFi setup screen
 - `--force-pair` — Show the device pairing screen even if credentials are stored (re-pair this booth)
+- `--mock-terminal` — Force the pay-first card-terminal flow with locally settled orders (paid after 3 s); `--mock-terminal=fail` declines, `--mock-terminal=timeout` lets the terminal give up. Works with a portal-mode booking (the backend then ignores `order_id`).
 
 ## Architecture Overview
 
@@ -71,7 +72,8 @@ This is an **Electron app with strict process separation**:
      - `screens.js` — `showScreen` (loading fade), `screenHardware` claim/release for modal screens (update, language)
      - `setup/text.js`, `setup/language.js`, `setup/wifi.js` (QR scanner, WiFi QR parsing, booking WiFi profile), `setup/pairing.js` (pairing screen, `handleAuthInvalid`)
      - `booth/camera.js` (init, 4K switch, rotation, capture at ≤2048 px), `booth/capture.js` (countdown Lottie, flash, `handleCapture`), `booth/coverflow.js` (style cards, CTA rotation), `booth/badges.js` (price badge, terms notice, payment helpers), `booth/brand.js` (hub/PB branding), `booth/events.js` (`setupEventListeners`: hardware + keyboard + printer status, registered once)
-     - `generate.js` — `processPhoto`, stream event handler (`handleGenerateEvent`), poem/image result dispatch, toast
+     - `generate.js` — `processPhoto({orderId})`, stream event handler (`handleGenerateEvent`), poem/image result dispatch, toast
+     - `orders.js` (kiosk orders: create / poll / cancel via IPC), `paywall.js` (pay-first screen: price, knob = number of prints, terminal polling), `result/terminal.js` (pay-first result screen: press-to-print, free retake, extra-print upsell, 20 s idle return)
      - `result/poem.js` (typing effect, font sizing, markdown), `result/qr.js` (QR, 30 s timer, return to booth), `result/print.js` (hold-to-print, print asset, printer status), `result/transitions.js` (wipe-out), `result/ui.js` (QR label, payment UI, camera background)
      - `update.js` (update screen + install), `lottie.js` (loading/processing animations, loading text rotation), `ui.js` (status/progress/error/notification helpers), `debug.js` (dev panel), `config.js` (2-minute config polling)
    - UI fonts (Inter, EB Garamond) are bundled under `fonts/`; no network needed to render any screen
@@ -86,7 +88,7 @@ All heavy services run in the **main process** to isolate privileged operations:
 
 **`apiClient.js`** - Backend communication:
 - Auth modes: `device_token` (paired, `Authorization: Bearer <supabase access token>`, auto-refresh via `/api/device-auth/refresh`), `certificate` (legacy `Bearer {base64_cert}`), `none` (needs pairing)
-- Endpoints: `/api/device-auth/*`, `/api/kiosk/config`, `/api/kiosk/generate` (streaming), `/api/kiosk/print-jobs`, `/api/kiosk/printer-status`
+- Endpoints: `/api/device-auth/*`, `/api/kiosk/config`, `/api/kiosk/generate` (streaming), `/api/kiosk/print-jobs`, `/api/kiosk/printer-status`, `/api/kiosk/orders` (pay-first terminal payments: create / status / cancel)
 - Backend URL: `https://book.poembooth.com` (`--staging` → Vercel staging deployment)
 - All requests have timeouts (30 s JSON, 60–90 s multipart); response bodies are never logged
 
@@ -194,6 +196,13 @@ Devices must be provisioned BEFORE deployment using the setup script in the book
    - Kiosk shows the QR code; main prefetches the print asset
 6. Guest scans QR or long-presses to print
 7. "Take Another Photo" to restart
+
+### Payment modes
+
+`config.payment.mode` (from the booking's `payment_config.mode`) selects the flow:
+
+- **`portal`** (default, Mollie): generate first; the guest pays on their phone via the QR to print. The kiosk never prints from its button (`isPaidPrintActive()`); paid prints arrive as portal print jobs (`printJobService.js`).
+- **`terminal`** (Yourselv card terminal in the booth pillar, `isTerminalPayMode()`): pay first. After the photo the **paywall** screen shows the price of 1 print (`payment.print_tiers`); the knob picks more prints (cancel + new order, debounced; the terminal cannot change an amount). The kiosk polls `GET /api/kiosk/orders/{id}` every 750 ms; `paid` → `processPhoto({orderId})` → `/api/kiosk/generate` with `order_id` (402 without a paid order). On the result screen: button = print the paid copies right away, knob before the first print = one free retake with another style (same order), knob after printing = extra copies (`extra_print` order, price = difference to the next tier), 20 s after the last print → booth. The backend commits the terminal payment on a successful render and refunds it when the first generation fails. No payment code or Yourselv key lives on the kiosk.
 
 ## Configuration
 

@@ -66,7 +66,37 @@ export const de = {
     scanToPrintAndSave: 'Scannen zum Speichern<br/>& Drucken',
     printForJust: 'Drucken für nur',
     scanQrNow: 'Scanne jetzt den QR-Code',
-    holdToPrint: 'Knopf gedrückt halten zum Drucken'
+    holdToPrint: 'Knopf gedrückt halten zum Drucken',
+    // Pay-first (terminal) flow
+    pressToPrint: 'Drücken zum Drucken',
+    hintPrint: 'Zufrieden? Drück den großen Knopf und es wird sofort gedruckt!',
+    hintRetake: 'Lieber etwas anderes? Dreh am Knopf für 1 GRATIS neuen Versuch.',
+    hintPrinting: 'Dein Meisterwerk wird gedruckt, schau nach unten!',
+    hintUpsell: 'Noch eins für zu Hause? Drehen zum Wählen, Karte tippen zum Nachdrucken.',
+    hintDone: 'Fertig! Scanne den QR-Code, um dein Meisterwerk herunterzuladen.',
+    retakeTitle: 'Wähle einen anderen Stil',
+    retakeSub: 'Drück den großen Knopf, um es neu zu erstellen (gratis)',
+    upsellTitle: 'Extra Drucke',
+    upsellPrints: '+{count} Druck(e)',
+    upsellTap: 'Tipp deine Karte an das Terminal',
+    upsellUpdating: 'Betrag wird angepasst…',
+    upsellPaid: 'Bezahlt! Wird gedruckt...',
+    upsellFailed: 'Zahlung fehlgeschlagen, drehen zum erneuten Versuch',
+    upsellCancelled: 'Keine Zahlung erhalten'
+  },
+  paywall: {
+    title: 'Bereit für die Verwandlung?',
+    tap: 'Tipp deine Karte und entfessle die KI!',
+    turnForMore: 'In der Gruppe? Dreh am Knopf für extra Drucke!',
+    onePrint: '1 Druck',
+    nPrints: '{count} Drucke',
+    waitingTerminal: 'Warten auf das Terminal…',
+    updatingTerminal: 'Betrag wird angepasst…',
+    paid: 'Bezahlt! Die KI legt los…',
+    declined: 'Zahlung fehlgeschlagen, bitte noch einmal versuchen',
+    declinedFinal: 'Die Zahlung hat nicht geklappt. Drück den Knopf, um neu zu beginnen.',
+    retrying: 'Keine Zahlung erhalten, noch ein Versuch…',
+    timeout: 'Keine Zahlung erhalten. Drück den Knopf, um neu zu beginnen!'
   },
   terms: {
     agree: 'Mit dem Start akzeptierst du unsere AGB und Datenschutzerklärung'

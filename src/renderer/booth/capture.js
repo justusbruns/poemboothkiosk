@@ -1,7 +1,9 @@
 import { t } from '../translations/index.js';
 import { capturePhoto } from './camera.js';
 import { flyOutSelectedCard } from './coverflow.js';
+import { isTerminalPayMode } from './badges.js';
 import { processPhoto } from '../generate.js';
+import { startPaywall } from '../paywall.js';
 import { updateBoothBrandVisibility } from '../screens.js';
 import { elements, state } from '../state.js';
 import { showError } from '../ui.js';
@@ -205,6 +207,13 @@ export async function handleCapture() {
     console.log('[RENDERER] Playing countdown animation...');
     await playCountdownAndCapture();
     console.log('[RENDERER] Photo captured during flash, length:', state.currentPhoto ? state.currentPhoto.length : 0);
+
+    if (isTerminalPayMode()) {
+      // Pay-first: the guest pays on the card terminal before the AI runs
+      console.log('[RENDERER] Terminal pay mode - showing the paywall...');
+      await startPaywall();
+      return;
+    }
 
     // Auto-proceed to processing (no confirmation needed)
     console.log('[RENDERER] Proceeding automatically to processPhoto()...');

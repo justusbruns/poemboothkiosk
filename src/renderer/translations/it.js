@@ -66,7 +66,37 @@ export const it = {
     scanToPrintAndSave: 'Scansiona per Salvare<br/>e Stampare',
     printForJust: 'Stampa per solo',
     scanQrNow: 'Scansiona il QR code ora',
-    holdToPrint: 'Tieni premuto il pulsante per stampare'
+    holdToPrint: 'Tieni premuto il pulsante per stampare',
+    // Pay-first (terminal) flow
+    pressToPrint: 'Premi per stampare',
+    hintPrint: 'Ti piace? Premi il pulsante grande per stampare subito!',
+    hintRetake: 'Preferisci altro? Gira la manopola per 1 nuovo tentativo GRATIS.',
+    hintPrinting: 'Il tuo capolavoro è in stampa, guarda in basso!',
+    hintUpsell: 'Una in più per casa? Gira per scegliere, avvicina la carta per stampare altre copie.',
+    hintDone: 'Fatto! Scansiona il codice QR per scaricare il tuo capolavoro.',
+    retakeTitle: 'Scegli un altro stile',
+    retakeSub: 'Premi il pulsante grande per crearlo di nuovo (gratis)',
+    upsellTitle: 'Stampe extra',
+    upsellPrints: '+{count} stampa/e',
+    upsellTap: 'Avvicina la carta al terminale',
+    upsellUpdating: 'Aggiornamento dell\'importo…',
+    upsellPaid: 'Pagato! In stampa...',
+    upsellFailed: 'Pagamento rifiutato, gira la manopola per riprovare',
+    upsellCancelled: 'Nessun pagamento ricevuto'
+  },
+  paywall: {
+    title: 'Pronto per la trasformazione?',
+    tap: 'Avvicina la carta per scatenare l\'IA!',
+    turnForMore: 'Siete in gruppo? Gira la manopola per altre stampe!',
+    onePrint: '1 stampa',
+    nPrints: '{count} stampe',
+    waitingTerminal: 'In attesa del terminale…',
+    updatingTerminal: 'Aggiornamento dell\'importo…',
+    paid: 'Pagato! L\'IA si mette al lavoro…',
+    declined: 'Pagamento rifiutato, riprova',
+    declinedFinal: 'Il pagamento non è andato a buon fine. Premi il pulsante per ricominciare.',
+    retrying: 'Nessun pagamento ricevuto, un altro tentativo…',
+    timeout: 'Nessun pagamento ricevuto. Premi il pulsante per ricominciare!'
   },
   terms: {
     agree: 'Iniziando accetti i nostri termini e l’informativa sulla privacy'

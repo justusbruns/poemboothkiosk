@@ -156,6 +156,27 @@
     <p id="notification-message" class="notification-message"></p>
   </div>
 
+  <!-- Paywall Screen (pay-first flow): the fresh photo + building energy, pay on the card terminal -->
+  <div id="paywall-screen" class="screen">
+    <img id="paywall-photo" class="paywall-photo" src="" alt="" />
+    <div id="paywall-energy" class="paywall-energy" aria-hidden="true">
+      <div class="energy-ring"></div>
+      <div class="energy-ring energy-ring--2"></div>
+      <div class="energy-scan"></div>
+      <div class="energy-particles"></div>
+    </div>
+    <div class="paywall-overlay">
+      <h1 id="paywall-title" class="paywall-title">Ready for the transformation?</h1>
+      <div class="paywall-price-block">
+        <div id="paywall-price" class="paywall-price">€ 5</div>
+        <div id="paywall-qty" class="paywall-qty">1 print</div>
+      </div>
+      <p id="paywall-tap" class="paywall-tap">Tap your card to unleash the AI</p>
+      <p id="paywall-hint" class="paywall-hint">With a group? Turn the knob for extra prints</p>
+      <p id="paywall-status" class="paywall-status"></p>
+    </div>
+  </div>
+
   <!-- Processing Screen (full-screen photo with loading) -->
   <div id="processing-screen" class="screen">
     <img id="processing-photo" class="processing-photo" src="" alt="" />
@@ -179,6 +200,15 @@
       <div id="result-watermark" class="result-watermark" style="display: none;">
         <img src="assets/pb-logo.svg" alt="Poem Booth" />
       </div>
+    </div>
+
+    <!-- Pay-first flow: what the guest can do now (print / retake / add prints) -->
+    <p id="result-hint" class="result-hint" style="display: none;"></p>
+    <!-- Pay-first flow: retake (pick another style) or extra-print upsell panel -->
+    <div id="result-panel" class="result-panel" style="display: none;">
+      <p id="result-panel-title" class="result-panel-title"></p>
+      <p id="result-panel-value" class="result-panel-value"></p>
+      <p id="result-panel-sub" class="result-panel-sub"></p>
     </div>
 
     <!-- QR Code and Print Circles -->

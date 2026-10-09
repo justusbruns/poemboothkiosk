@@ -1,8 +1,11 @@
+import { isTerminalPayMode } from './badges.js';
 import { handleCapture } from './capture.js';
 import { handleStyleChange } from './coverflow.js';
 import { updateDebugInfo } from '../debug.js';
+import { cancelPaywall, handlePaywallKnob } from '../paywall.js';
 import { canLocalPrint, cancelPrintHold, isLocalPrintMode, startPrintHold, updatePrinterStatus } from '../result/print.js';
 import { returnToBoothFromResult } from '../result/qr.js';
+import { handleTerminalResultButton, handleTerminalResultKnob } from '../result/terminal.js';
 import { triggerGlassWipe } from '../result/transitions.js';
 import { showScreen } from '../screens.js';
 import { elements, state } from '../state.js';
@@ -53,6 +56,11 @@ export function setupEventListeners() {
     if (state.screen === 'booth' && !state.isProcessing) {
       console.log('[HARDWARE] Calling handleCapture()...');
       handleCapture();
+    } else if (state.screen === 'paywall') {
+      console.log('[HARDWARE] Button on paywall - ignored (pay on the terminal)');
+    } else if (state.screen === 'result' && !state.isProcessing && isTerminalPayMode()) {
+      // Pay-first flow: print the paid copies / confirm a retake / close a panel
+      handleTerminalResultButton();
     } else if (state.screen === 'result' && !state.isProcessing) {
       if (isLocalPrintMode()) {
         // Hold-to-print mode: the button ONLY prints — it never returns to booth early.
@@ -107,8 +115,13 @@ export function setupEventListeners() {
   // Hardware knob rotation - cycle through poetry styles
   window.electronAPI.onKnobRotate((data) => {
     console.log('[HARDWARE] Knob rotate event received:', data);
+    const direction = data.direction === 'clockwise' ? 'clockwise' : 'counterclockwise';
     if (state.screen === 'booth' && !state.isProcessing && state.availableStyles.length > 0) {
       handleStyleChange(data.direction);
+    } else if (state.screen === 'paywall') {
+      handlePaywallKnob(direction);            // number of prints
+    } else if (state.screen === 'result' && !state.isProcessing && isTerminalPayMode()) {
+      handleTerminalResultKnob(direction);     // retake style / extra prints
     }
   });
 
@@ -167,6 +180,14 @@ export function setupEventListeners() {
         handleCapture();
       }
 
+      // Pay-first flow: the forwarded hardware events (above) already drive the
+      // paywall and result screens; only 'R' is a dev escape here.
+      if (isTerminalPayMode() && (state.screen === 'paywall' || state.screen === 'result')) {
+        if (e.code === 'KeyR' && state.screen === 'paywall') { e.preventDefault(); cancelPaywall(); }
+        else if (e.code === 'KeyR' && state.screen === 'result') { e.preventDefault(); triggerGlassWipe(); }
+        return;
+      }
+
       // Enter/P on result screen - hold to print (free mode + printer) or return to booth
       if ((e.code === 'Enter' || e.code === 'KeyP') && state.screen === 'result' && !e.repeat) {
         e.preventDefault();
@@ -204,7 +225,7 @@ export function setupEventListeners() {
 
     // Enter/P release on result screen - cancel print hold (released before 2s)
     document.addEventListener('keyup', (e) => {
-      if ((e.code === 'Enter' || e.code === 'KeyP') && state.screen === 'result') {
+      if ((e.code === 'Enter' || e.code === 'KeyP') && state.screen === 'result' && !isTerminalPayMode()) {
         e.preventDefault();
         cancelPrintHold();
       }

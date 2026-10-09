@@ -522,6 +522,11 @@ class ApiClient {
       formData.append('style_id', String(metadata.style));
       console.log('[API] Including selected style:', metadata.style);
     }
+    // Pay-first (terminal) bookings: the paid kiosk order that entitles this generation
+    if (metadata.order_id) {
+      formData.append('order_id', String(metadata.order_id));
+      console.log('[API] Including paid order:', metadata.order_id);
+    }
 
     const result = { events: [], poem: '', caption: null, session_id: null, generation_type: null, render: null, image: null, error: null };
     let isNdjson = null;   // decided from the response content-type
@@ -718,6 +723,46 @@ class ApiClient {
       // Don't throw - printing should still work if the call fails (e.g. offline)
       return { success: false };
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Kiosk orders: pay-first payments on the booth's own card terminal. The
+  // backend brokers the terminal (Yourselv); the kiosk only creates, polls and
+  // cancels orders. Backend: /api/kiosk/orders.
+  // ---------------------------------------------------------------------------
+
+  // kind: 'generation' (portrait + N prints, before generating) | 'extra_print'
+  // (N more prints of session_id). Resolves with the order view
+  // { order_id, status, quantity, amount_cents, currency, generations_left, ... }.
+  // Rejects with error.code === 'terminal_unavailable' (HTTP 503) when the
+  // booth has no usable terminal.
+  async createOrder(kind, quantity, sessionId = null) {
+    const body = { kind, quantity };
+    if (sessionId) body.session_id = sessionId;
+    try {
+      return await this.request('POST', '/api/kiosk/orders', body);
+    } catch (error) {
+      throw this.orderError(error);
+    }
+  }
+
+  async getOrder(orderId) {
+    return this.request('GET', `/api/kiosk/orders/${encodeURIComponent(orderId)}`);
+  }
+
+  async cancelOrder(orderId, reason = 'cancelled_by_kiosk') {
+    return this.request('POST', `/api/kiosk/orders/${encodeURIComponent(orderId)}/cancel`, { reason });
+  }
+
+  // request() throws `HTTP <status>: <body>`; lift the backend's error code
+  // (e.g. terminal_unavailable, no_price) onto the error for the renderer.
+  orderError(error) {
+    const m = /^HTTP (\d+): (.*)$/s.exec(error && error.message || '');
+    if (m) {
+      error.status = Number(m[1]);
+      try { error.code = JSON.parse(m[2]).error || null; } catch (e) { /* not JSON */ }
+    }
+    return error;
   }
 
   // Report printer connectivity/status so the portal can show/hide its print button,
