@@ -491,7 +491,8 @@ function killChildProcesses() {
     const output = execFileSync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command',
-        `Get-CimInstance Win32_Process -Filter "ParentProcessId=${pid}" | Select-Object -ExpandProperty ProcessId`],
+        // Never touch the NSIS updater (spawned with --updated), whatever the call order.
+        `Get-CimInstance Win32_Process -Filter "ParentProcessId=${pid}" | Where-Object { -not ($_.CommandLine -match '--updated') } | Select-Object -ExpandProperty ProcessId`],
       { encoding: 'utf8', timeout: 8000, windowsHide: true }
     );
     const childPids = output.split(/\r?\n/).map(s => s.trim()).filter(s => /^\d+$/.test(s));
@@ -1033,22 +1034,26 @@ ipcMain.handle('update:download', async () => {
 ipcMain.handle('update:install', async () => {
   try {
     console.log('[MAIN] Installing update...');
-    if (!updateService || !updateService.installUpdate()) {
+    if (!updateService || !updateService.updateDownloaded) {
       return { success: false, error: 'No update ready to install' };
     }
+    // From here on nothing may block the quit or recreate the window.
+    allowQuitForUpdate = true;
 
-    // Phase 1: Gracefully close services that hold child processes
+    // Phase 1: close services and kill their child processes (print worker,
+    // PowerShell probes). This has to happen BEFORE the installer is spawned:
+    // electron-updater starts the NSIS installer as a detached child of this
+    // process, so a kill sweep afterwards takes the installer down with the
+    // rest — the update then silently never happens and the app never
+    // restarts (seen on 1.6.0, where the sweep started working on Windows 11).
     console.log('[MAIN] Phase 1: Closing services...');
-
-    // Force-kill any remaining child processes (printer PowerShell worker)
-    killChildProcesses();
-
     if (hardwareService) {
       try { await hardwareService.destroy(); } catch (e) {}
     }
     if (printerService) {
       try { printerService.destroy(); } catch (e) {}
     }
+    killChildProcesses();
 
     // Phase 2: Destroy window (synchronous, unlike close())
     console.log('[MAIN] Phase 2: Destroying window...');
@@ -1056,14 +1061,12 @@ ipcMain.handle('update:install', async () => {
       mainWindow.destroy();
     }
 
-    // Phase 3: Spawn installer and force-exit
-    // quitAndInstall() spawns NSIS installer as detached process, then calls app.quit()
-    // We follow up with app.exit(0) to ensure the process tree dies immediately
+    // Phase 3: spawn the installer (quitAndInstall also calls app.quit()),
+    // then make sure this process is gone so the installer can replace files.
     console.log('[MAIN] Phase 3: Spawning installer and exiting...');
-    allowQuitForUpdate = true;
-    updateService.installUpdate();
-
-    // Force-kill after brief delay in case app.quit() from quitAndInstall hangs
+    if (!updateService.installUpdate()) {
+      return { success: false, error: 'Installer could not be started' };
+    }
     setTimeout(() => {
       app.exit(0);
     }, 500);
