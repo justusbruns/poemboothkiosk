@@ -279,6 +279,13 @@ async function createWindow() {
           mainWindow.setAlwaysOnTop(true, 'screen-saver');
         }
       }, 2000);
+      // Windows only hands the foreground to a process started from the
+      // foreground chain. Launched by the updater's installer (or a task
+      // scheduler), the kiosk comes up fullscreen but WITHOUT keyboard focus,
+      // and every Pico key press goes nowhere. focus() cannot take it in that
+      // state; restoring from minimized can.
+      setTimeout(ensureKeyboardFocus, 1500);
+      setTimeout(ensureKeyboardFocus, 6000);
     }
   });
 
@@ -292,6 +299,26 @@ async function createWindow() {
       if (!mainWindow.isFullScreen()) mainWindow.setFullScreen(true);
       mainWindow.focus();
     });
+  }
+}
+
+function ensureKeyboardFocus() {
+  if (IS_DEV || !mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isFocused()) return;
+  console.warn('[MAIN] Window has no keyboard focus - taking it (minimize/restore)');
+  try {
+    mainWindow.minimize();
+    mainWindow.restore();
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    if (!mainWindow.isFullScreen()) mainWindow.setFullScreen(true);
+    mainWindow.focus();
+    setTimeout(() => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        console.log('[MAIN] Keyboard focus after grab:', mainWindow.isFocused());
+      }
+    }, 500);
+  } catch (e) {
+    console.warn('[MAIN] Focus grab failed:', e.message);
   }
 }
 
