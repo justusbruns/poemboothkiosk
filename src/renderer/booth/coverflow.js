@@ -7,8 +7,10 @@ import { elements, state } from '../state.js';
 export let turningTimeout = null;
 
 // Handle style selection with knob rotation (coverflow-style carousel)
-export function handleStyleChange(direction) {
+export function handleStyleChange(direction, { auto = false } = {}) {
   if (state.availableStyles.length === 0) return;
+  // A guest turned the knob: stop auto-turning and give them time to choose
+  if (!auto) restartIdleAttract(true);
 
   // Calculate new index
   if (direction === 'clockwise') {
@@ -28,25 +30,61 @@ export function handleStyleChange(direction) {
 
 // Build the coverflow cards from the available styles.
 // Image styles show their example output image; poem styles show a "record sleeve" name card.
+// Returns a promise that resolves once every card image is downloaded and decoded,
+// so the booth can wait for it at boot (no cards popping in, no blank flip side).
 export function buildStyleCoverflow() {
   const cf = document.getElementById('style-coverflow');
-  if (!cf) return;
+  if (!cf) return Promise.resolve();
   cf.innerHTML = '';
+  const imageLoads = [];
 
   state.availableStyles.forEach((style) => {
     const card = document.createElement('div');
     card.className = 'style-card';
 
+    // Two faces so the card can flip: front = style example, back = the example's input photo
+    const inner = document.createElement('div');
+    inner.className = 'style-card-inner';
+    const front = document.createElement('div');
+    front.className = 'style-card-face style-card-front';
+    inner.appendChild(front);
+    card.appendChild(inner);
+
     const outUrl = style && style.example_output_image_url;
     if (outUrl) {
       const img = document.createElement('img');
       img.src = outUrl;
+      imageLoads.push(img.decode().catch(() => {}));
       img.alt = style.name || '';
       // If the image fails to load, fall back to a name card
-      img.onerror = () => makePoemCard(card, style);
-      card.appendChild(img);
+      img.onerror = () => {
+        makePoemCard(front, style);
+        card.querySelector('.style-card-back')?.remove();
+        delete card.dataset.hasInput;
+      };
+      front.appendChild(img);
     } else {
-      makePoemCard(card, style);
+      makePoemCard(front, style);
+    }
+
+    // Only image styles flip (poem styles have no before/after photo pair)
+    const inUrl = outUrl && style.example_input_image_url;
+    if (inUrl) {
+      const back = document.createElement('div');
+      back.className = 'style-card-face style-card-back';
+      const img = document.createElement('img');
+      img.src = inUrl;
+      imageLoads.push(img.decode().catch(() => {}));
+      img.alt = '';
+      // No input photo to show → this card never flips
+      img.onerror = () => { back.remove(); delete card.dataset.hasInput; };
+      back.appendChild(img);
+      // Small label so it's clear this is the photo that went in
+      const badge = document.createElement('span');
+      badge.className = 'input-badge';
+      back.appendChild(badge);
+      inner.appendChild(back);
+      card.dataset.hasInput = '1';
     }
 
     cf.appendChild(card);
@@ -54,16 +92,100 @@ export function buildStyleCoverflow() {
 
   positionStyleCoverflow();
   updateActionLabel();
+  if (state.screen === 'booth') restartIdleAttract();
+  return Promise.all(imageLoads);
 }
 
-// Turn a card into a poem "record sleeve" with the poet/style name
-export function makePoemCard(card, style) {
-  card.classList.add('style-card-poem');
-  card.innerHTML = '';
+// Turn a card face into a poem "record sleeve" with the poet/style name
+export function makePoemCard(face, style) {
+  face.classList.add('style-card-poem');
+  face.innerHTML = '';
   const name = document.createElement('span');
   name.className = 'poet-name';
   name.textContent = (style && (style.name || style.action_button_text)) || '';
-  card.appendChild(name);
+  face.appendChild(name);
+}
+
+// ---------------------------------------------------------------------------
+// Idle attract loop. Nobody around: the carousel turns by itself and each style
+// briefly flips to its input photo (what went in → what came out). Someone using
+// the knob: no auto-turning, so they can choose in peace; once they rest on a
+// style for a moment, that style flips once to show its input.
+// ---------------------------------------------------------------------------
+const IDLE_START_MS = 5000;           // booth shown, no input → start attract
+const STYLE_DWELL_MS = 5000;          // attract: time on a style before it flips
+const FLIP_HOLD_MS = 3000;            // how long the input photo stays visible
+const FLIP_SETTLE_MS = 1200;          // flip-back animation before moving on
+const STEP_NO_INPUT_MS = 4000;        // attract: time on a style that has no input photo
+const USER_REST_FLIP_MS = 3500;       // knob at rest this long → show that style's input
+const USER_QUIET_RESUME_MS = 30000;   // knob untouched this long → attract resumes
+
+let attractGen = 0;
+
+// Resolves true when the wait finished, false when the loop was cancelled meanwhile
+function attractSleep(ms, gen) {
+  return new Promise((resolve) => setTimeout(() => resolve(gen === attractGen), ms));
+}
+
+function attractAllowed() {
+  return state.screen === 'booth' && !state.isProcessing && !state.isCapturing && state.availableStyles.length > 0;
+}
+
+function centreCard() {
+  const cf = document.getElementById('style-coverflow');
+  return cf ? cf.children[state.currentStyleIndex] : null;
+}
+
+function unflipAllCards() {
+  const cf = document.getElementById('style-coverflow');
+  if (!cf) return;
+  for (const card of cf.children) card.classList.remove('flipped');
+}
+
+// Flip the centre card to its input photo, hold, flip back. Resolves false if cancelled.
+async function flipCentreCard(gen) {
+  const card = centreCard();
+  if (!card || !card.dataset.hasInput || !attractAllowed()) return gen === attractGen;
+  const badge = card.querySelector('.input-badge');
+  if (badge) badge.textContent = t('booth.inputBadge'); // set here so a language switch is picked up
+  card.classList.add('flipped');
+  if (!(await attractSleep(FLIP_HOLD_MS, gen))) return false;
+  card.classList.remove('flipped');
+  return attractSleep(FLIP_SETTLE_MS, gen);
+}
+
+async function runIdleAttract(gen, afterUserInput) {
+  if (afterUserInput) {
+    // Guest is choosing: show the style they rest on, then stay still for a long while
+    if (!(await attractSleep(USER_REST_FLIP_MS, gen))) return;
+    if (!(await flipCentreCard(gen))) return;
+    const rest = USER_QUIET_RESUME_MS - USER_REST_FLIP_MS - FLIP_HOLD_MS - FLIP_SETTLE_MS;
+    if (!(await attractSleep(Math.max(0, rest), gen))) return;
+  } else if (!(await attractSleep(IDLE_START_MS, gen))) return;
+
+  // Attract: show the current style's input, then turn to the next one, and repeat
+  while (gen === attractGen && attractAllowed()) {
+    if (centreCard()?.dataset.hasInput) {
+      if (!(await flipCentreCard(gen))) return;
+    }
+    if (state.availableStyles.length > 1) {
+      handleStyleChange('clockwise', { auto: true });
+      const dwell = centreCard()?.dataset.hasInput ? STYLE_DWELL_MS : STEP_NO_INPUT_MS;
+      if (!(await attractSleep(dwell, gen))) return;
+    } else if (!(await attractSleep(STYLE_DWELL_MS, gen))) return;
+  }
+}
+
+// (Re)start the idle timing; any running attract loop or flip is cancelled.
+// afterUserInput = the guest just turned the knob (longer calm before auto-turning).
+export function restartIdleAttract(afterUserInput = false) {
+  stopIdleAttract();
+  runIdleAttract(attractGen, afterUserInput);
+}
+
+export function stopIdleAttract() {
+  attractGen++;
+  unflipAllCards();
 }
 
 // Position each card in the coverflow based on its circular distance from the current style
@@ -119,6 +241,8 @@ export function getCtaPhrases() {
   const phrases = [t('booth.cta1')];
   // "Trying is Free" only makes sense when guests actually have to pay to print
   if (isPaidPrintActive()) phrases.push(t('booth.cta2'));
+  // Only invite guests to pick a style when there is something to pick
+  if (state.availableStyles.length > 1) phrases.push(t('booth.ctaPickStyle'));
   phrases.push(t('booth.cta3'));
   return phrases;
 }
@@ -153,6 +277,7 @@ export function stopCtaRotation() {
 
 // On capture: the selected card rushes toward the viewer, then the countdown begins.
 export function flyOutSelectedCard() {
+  stopIdleAttract();
   return new Promise((resolve) => {
     const cf = document.getElementById('style-coverflow');
     if (!cf || !cf.children.length) { resolve(); return; }
@@ -216,4 +341,5 @@ export function resetStyleCoverflow() {
   if (elements.termsNotice) elements.termsNotice.style.opacity = '';
   updateActionLabel();
   startCtaRotation();
+  restartIdleAttract();
 }

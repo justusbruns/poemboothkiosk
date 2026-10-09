@@ -505,8 +505,12 @@ h1, h2, h3, h4, h5, h6, p {
 .floating-action {
   position: absolute;
   bottom: 5rem; /* lowered so the whole style-picker (incl. terms) sinks down, leaving room to pose */
-  left: 50%;
-  transform: translateX(-50%);
+  /* Full width (not left 50% + translateX(-50%)): a content-sized box changed width with
+     every CTA phrase, so its centre landed on half pixels and the carousel jittered */
+  left: 0;
+  right: 0;
+  transform: scale(1.25); /* whole picker 25% larger, growing upward */
+  transform-origin: 50% 100%;
   z-index: 5;
   display: flex;
   flex-direction: column;
@@ -651,18 +655,67 @@ h1, h2, h3, h4, h5, h6, p {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 150px;
+  width: 134px;               /* 2:3 portrait */
   height: 200px;
-  margin-left: -75px;
+  margin-left: -67px;
   margin-top: -100px;
   border-radius: 14px;
-  overflow: hidden;
-  background: #1f1f33;
   box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
+  perspective: 900px;         /* depth for the card's own flip */
   transform-origin: center center;
   transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
   will-change: transform, opacity;
   pointer-events: none;
+}
+
+/* Flipping inner: front = style example, back = the example's input photo */
+.style-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 0.8s cubic-bezier(0.45, 0, 0.2, 1);
+}
+
+.style-card.flipped .style-card-inner {
+  transform: rotateY(180deg);
+}
+
+.style-card-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #1f1f33;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.style-card-back {
+  transform: rotateY(180deg);
+}
+
+/* "Original" label, centred at the bottom of the input photo */
+.input-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 10px;
+  transform: translateX(-50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+/* The price badge overlaps the card's bottom edge; lift the label above it */
+.coverflow-wrap:has(.price-badge[style*="flex"]) .input-badge {
+  bottom: 40px;
 }
 
 .style-card img {

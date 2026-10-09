@@ -21,6 +21,8 @@ export const it = {
     tryingFree: 'Provare è sempre gratis',
     cta1: 'Premi<br/>il Pulsante',
     cta2: 'Provare<br/>è Gratis',
+    inputBadge: 'Originale',
+    ctaPickStyle: 'Scegli<br/>il tuo Stile',
     cta3: 'Prendi il tuo<br/>Capolavoro!'
   },
   countdown: {

@@ -347,7 +347,7 @@ export async function initializeApp() {
 
       // Build the coverflow of style cards
       state.currentStyleIndex = 0;
-      buildStyleCoverflow();
+      styleImagesReady = buildStyleCoverflow();
     } else {
       console.log('[RENDERER] No poetry styles configured, using default');
       state.availableStyles = [];
@@ -359,6 +359,11 @@ export async function initializeApp() {
     // that only became known with the config.
     await ensureCamera();
     applyCameraRotation(elements.cameraVideo);
+
+    // Style card images (examples + input photos) are loading in parallel; wait for
+    // them so the booth appears complete. Capped so a slow image never blocks boot.
+    updateStatus('loading', 'Loading styles...');
+    await Promise.race([styleImagesReady, new Promise((r) => setTimeout(r, 8000))]);
 
     // Show the real capture resolution on the loading screen so a sub-par camera
     // setup is visible at a glance on the kiosk itself

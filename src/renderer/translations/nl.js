@@ -49,6 +49,8 @@ export const nl = {
     tryingFree: 'Proberen is altijd gratis',
     cta1: 'Druk op<br/>de Knop',
     cta2: 'Proberen<br/>is Gratis',
+    inputBadge: 'Origineel',
+    ctaPickStyle: 'Kies<br/>je Stijl',
     cta3: 'Krijg nu je<br/>Meesterwerk!'
   },
   countdown: {
