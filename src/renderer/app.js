@@ -143,6 +143,47 @@ export function scheduleBackgroundUpdateCheck() {
 // application error). Used to route to the WiFi setup screen instead of the
 // red error screen. Note: errors crossing the IPC boundary lose their .code,
 // so we also match on the message text.
+// Diagnostics (--perf-probe): every 3 s log the requestAnimationFrame rate, the
+// camera's delivered frame rate, dropped/total video frames and long tasks, so
+// engine versions and Chromium flags can be compared by numbers.
+function startPerfProbe() {
+  const video = elements.cameraVideo;
+  let rafFrames = 0;
+  let videoFrames = 0;
+  let longTasks = 0;
+  let prevDropped = 0;
+  let prevTotal = 0;
+  let last = performance.now();
+
+  const rafTick = () => { rafFrames++; requestAnimationFrame(rafTick); };
+  requestAnimationFrame(rafTick);
+
+  if (video && typeof video.requestVideoFrameCallback === 'function') {
+    const onFrame = () => { videoFrames++; video.requestVideoFrameCallback(onFrame); };
+    video.requestVideoFrameCallback(onFrame);
+  }
+  try {
+    new PerformanceObserver((list) => { longTasks += list.getEntries().length; })
+      .observe({ type: 'longtask', buffered: true });
+  } catch (e) { /* unsupported */ }
+
+  setInterval(() => {
+    const now = performance.now();
+    const secs = (now - last) / 1000;
+    last = now;
+    let dropped = -1, total = -1;
+    try {
+      const q = video.getVideoPlaybackQuality();
+      dropped = q.droppedVideoFrames - prevDropped;
+      total = q.totalVideoFrames - prevTotal;
+      prevDropped = q.droppedVideoFrames;
+      prevTotal = q.totalVideoFrames;
+    } catch (e) { /* ignore */ }
+    console.log(`[PERF] screen=${state.screen} raf=${(rafFrames / secs).toFixed(1)}fps camera=${(videoFrames / secs).toFixed(1)}fps dropped=${dropped}/${total} longTasks=${longTasks}`);
+    rafFrames = 0; videoFrames = 0; longTasks = 0;
+  }, 3000);
+}
+
 export function isNetworkError(error) {
   if (!error) return false;
   const codes = ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'ENETUNREACH', 'EHOSTUNREACH', 'EPIPE'];
@@ -336,6 +377,9 @@ export async function initializeApp() {
     // Updates are checked off the critical path; the prompt only appears
     // while the booth is idle.
     scheduleBackgroundUpdateCheck();
+
+    // --perf-probe: log rAF rate, camera frame rate, dropped frames and long tasks
+    if (flags && flags.perfProbe) startPerfProbe();
 
   } catch (error) {
     console.error('[RENDERER] Initialization error:', error);

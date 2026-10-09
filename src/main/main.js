@@ -546,7 +546,8 @@ ipcMain.handle('get-flags', async () => {
     isDev: IS_DEV,
     isStaging: IS_STAGING,
     forceWifi: FORCE_WIFI,
-    forcePair: FORCE_PAIR
+    forcePair: FORCE_PAIR,
+    perfProbe: process.argv.includes('--perf-probe')
   };
 });
 
