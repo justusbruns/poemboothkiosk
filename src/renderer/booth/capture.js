@@ -5,6 +5,7 @@ import { isTerminalPayMode } from './badges.js';
 import { processPhoto } from '../generate.js';
 import { startPaywall } from '../paywall.js';
 import { takePrepaidRetake } from '../retry.js';
+import { confirmRetakeFromBooth } from '../result/terminal.js';
 import { updateBoothBrandVisibility } from '../screens.js';
 import { elements, state } from '../state.js';
 import { showError } from '../ui.js';
@@ -184,6 +185,12 @@ export async function handleCapture() {
 
   if (state.isProcessing) {
     console.log('[RENDERER] Already processing, ignoring capture request');
+    return;
+  }
+
+  // Free retake: same photo, the style chosen on this screen
+  if (state.retakeMode) {
+    await confirmRetakeFromBooth();
     return;
   }
 

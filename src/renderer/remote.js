@@ -17,8 +17,11 @@ const CONFIG_RETRY_MAX_MS = 10 * 60 * 1000;
 // No guest is mid-session: not paying, generating, looking at a result or printing
 export function isBoothIdle() {
   const busyScreens = ['paywall', 'processing', 'result'];
+  // A guest choosing a free retake style, or about to take a new photo for an
+  // already paid order, is on the start screen but very much mid-session.
   return !busyScreens.includes(state.screen) &&
-    !state.isProcessing && !state.isPrinting && !state.isCapturing && !state.glassWiping;
+    !state.isProcessing && !state.isPrinting && !state.isCapturing && !state.glassWiping &&
+    !state.retakeMode && !state.prepaidRetake;
 }
 
 let configTimer = null;

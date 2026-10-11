@@ -43,6 +43,7 @@ export const state = {
   terminalBusy: false,        // a terminal payment is pending on the result screen (upsell) - don't expire
   resultPhase: null,          // terminal result screen: 'reveal' | 'retake' | 'printed' | 'upsell'
   prepaidRetake: null,        // { orderId, reason }: paid generation failed, waiting for a new photo
+  retakeMode: false,          // choosing a style for the free retake on the start screen
   // Update state
   updateAvailable: false,
   updateInfo: null,

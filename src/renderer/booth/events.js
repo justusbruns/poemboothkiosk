@@ -5,7 +5,7 @@ import { updateDebugInfo } from '../debug.js';
 import { cancelPaywall, handlePaywallKnob } from '../paywall.js';
 import { canLocalPrint, cancelPrintHold, isLocalPrintMode, startPrintHold, updatePrinterStatus } from '../result/print.js';
 import { returnToBoothFromResult } from '../result/qr.js';
-import { handleTerminalResultButton, handleTerminalResultKnob } from '../result/terminal.js';
+import { handleTerminalResultButton, handleTerminalResultKnob, onRetakeKnob } from '../result/terminal.js';
 import { triggerGlassWipe } from '../result/transitions.js';
 import { showScreen } from '../screens.js';
 import { elements, state } from '../state.js';
@@ -118,6 +118,7 @@ export function setupEventListeners() {
     const direction = data.direction === 'clockwise' ? 'clockwise' : 'counterclockwise';
     if (state.screen === 'booth' && !state.isProcessing && state.availableStyles.length > 0) {
       handleStyleChange(data.direction);
+      if (state.retakeMode) onRetakeKnob();
     } else if (state.screen === 'paywall') {
       handlePaywallKnob(direction);            // number of prints
     } else if (state.screen === 'result' && !state.isProcessing && isTerminalPayMode()) {

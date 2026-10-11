@@ -1,6 +1,8 @@
 import { t } from '../translations/index.js';
 import { formatPrice, getCurrency, getExtraPrintPriceCents, getTierQuantities, isTerminalPayMode } from '../booth/badges.js';
 import { processPhoto } from '../generate.js';
+import { flyOutSelectedCard, handleStyleChange, stopIdleAttract } from '../booth/coverflow.js';
+import { showScreen, updateBoothBrandVisibility } from '../screens.js';
 import { cancelOrder, createOrder, waitForOrder } from '../orders.js';
 import { hidePayQr, renderPayQr, showPayQrLoading } from '../payqr.js';
 import { cancelTypingAnimation } from './poem.js';
@@ -91,6 +93,8 @@ export function enterTerminalResult() {
 
 // Runs after the wipe back to the booth
 export function leaveTerminalResult() {
+  if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
+  if (state.retakeMode) { state.retakeMode = false; setRetakeChrome(false); }
   hidePanel();
   setHint('');
   if (upsell) {
@@ -138,36 +142,84 @@ async function printAllPaid() {
 // Retake (one free regeneration with another style)
 // ---------------------------------------------------------------------------
 
-function openRetake(direction) {
-  setPhase('retake');
-  cycleStyle(direction);
-  armPanelClose(closeRetake);
+// Free retake: the start screen with its style coverflow, but with the guest's
+// own photo instead of the live camera and a "free retake" banner. Turning the
+// knob picks a style exactly like on the start screen; the button makes the
+// portrait again with the same photo. No input for a while → back to the result.
+const RETAKE_IDLE_MS = 25000;
+let retakeTimer = null;
+
+function armRetakeTimeout() {
+  if (retakeTimer) clearTimeout(retakeTimer);
+  retakeTimer = setTimeout(() => {
+    retakeTimer = null;
+    if (state.retakeMode) closeRetake();
+  }, RETAKE_IDLE_MS);
 }
 
-function cycleStyle(direction) {
-  const n = state.availableStyles.length;
-  if (n > 1) {
-    state.currentStyleIndex = direction === 'clockwise'
-      ? (state.currentStyleIndex + 1) % n
-      : (state.currentStyleIndex - 1 + n) % n;
+function setRetakeChrome(on) {
+  const photo = document.getElementById('retake-photo');
+  if (photo) {
+    photo.src = on ? (state.currentPhoto || '') : '';
+    photo.style.display = on ? 'block' : 'none';
   }
-  showPanel(t('result.retakeTitle'), `‹ ${currentStyleName()} ›`, t('result.retakeSub'));
+  if (elements.prepaidBanner) {
+    if (on) {
+      elements.prepaidTitle.textContent = t('result.retakeTitle');
+      elements.prepaidBody.textContent = t('result.retakeBody');
+      elements.prepaidCta.textContent = t('result.retakeSub');
+    }
+    elements.prepaidBanner.style.display = on ? 'block' : 'none';
+  }
+  // The retake is free: no price on the start screen
+  if (elements.priceBadge) elements.priceBadge.style.visibility = on ? 'hidden' : '';
+}
+
+function openRetake(direction) {
+  setPhase('retake');
+  cancelResultTimer();
+  hidePanel();
+  state.retakeMode = true;
+  showScreen('booth');
+  stopIdleAttract(); // no auto-turning while the guest chooses
+  setRetakeChrome(true);
+  handleStyleChange(direction === 'clockwise' ? 'clockwise' : 'counterclockwise');
+  armRetakeTimeout();
+}
+
+// Knob on the start screen while choosing a retake style
+export function onRetakeKnob() {
+  if (!state.retakeMode) return;
+  stopIdleAttract();
+  armRetakeTimeout();
 }
 
 function closeRetake() {
-  hidePanel();
+  if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
+  state.retakeMode = false;
+  setRetakeChrome(false);
+  showScreen('result');
   setPhase('reveal');
+  const retake = state.order && state.order.generationsLeft > 0 ? `<br/>${t('result.hintRetake')}` : '';
+  setHint(`${t('result.hintPrint')}${retake}`);
+  startResultTimer(REVEAL_TIMEOUT_MS);
 }
 
-async function confirmRetake() {
-  hidePanel();
-  cancelResultTimer();
+// Button on the start screen while choosing a retake style
+export async function confirmRetakeFromBooth() {
+  if (!state.retakeMode || !state.order) return;
+  if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
+  state.retakeMode = false;
+  state.isCapturing = true;
+  updateBoothBrandVisibility();
+  console.log('[TERMINAL] Free retake with style', currentStyleName());
+  await flyOutSelectedCard(); // same send-off as a normal capture
+  setRetakeChrome(false);
   cancelTypingAnimation();
   setHint('');
   state.order.generationsLeft = Math.max(0, state.order.generationsLeft - 1);
   document.getElementById('qr-circle')?.classList.remove('show');
   document.getElementById('print-circle')?.classList.remove('show');
-  console.log('[TERMINAL] Free retake with style', currentStyleName());
   await processPhoto({ orderId: state.order.id, retake: true });
 }
 
@@ -304,7 +356,7 @@ export function handleTerminalResultButton() {
     case 'reveal':
       return printAllPaid();
     case 'retake':
-      return confirmRetake();
+      return confirmRetakeFromBooth();
     case 'printed':
       if (state.printsRemaining > 0) return printAllPaid(); // a copy failed earlier
       return;
@@ -322,9 +374,7 @@ export function handleTerminalResultKnob(direction) {
       if (state.order && state.order.generationsLeft > 0) openRetake(direction);
       return;
     case 'retake':
-      cycleStyle(direction);
-      armPanelClose(closeRetake);
-      return;
+      return; // handled by the start screen's coverflow (see onRetakeKnob)
     case 'printed':
       return openUpsell(direction);
     case 'upsell':
