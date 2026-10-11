@@ -89,6 +89,7 @@ export const de = {
     title: 'Bereit für die Verwandlung?',
     scanToPay: 'Scanne den QR-Code, um mit dem Handy zu bezahlen!',
     terminalDown: 'Das Kartenterminal ist gerade nicht verfügbar, bezahle mit deinem Handy.',
+    qrUpdating: "QR-Code für den neuen Betrag wird erstellt…",
     tap: 'Tipp deine Karte und entfessle die KI!',
     turnForMore: 'In der Gruppe? Dreh am Knopf für extra Drucke!',
     onePrint: '1 Druck',
@@ -115,6 +116,11 @@ export const de = {
     pleaseTryAgain: 'Bitte versuchen Sie es erneut',
     buttonTryAgain: 'Taste: Erneut versuchen',
     generationFailed: 'Hoppla! Das Bild wurde nicht ganz richtig generiert. Versuchen wir ein anderes Foto!',
-    processingFailed: 'Dieses Mal hat es nicht geklappt. Drücken Sie die Taste, um es erneut zu versuchen!'
+    processingFailed: 'Dieses Mal hat es nicht geklappt. Drücken Sie die Taste, um es erneut zu versuchen!',
+    paymentRequired: "Die Zahlung konnte nicht bestätigt werden. Drück den Knopf, um neu zu beginnen.",
+    terminalUnavailable: "Das Kartenterminal ist gerade nicht verfügbar. Bitte versuche es später noch einmal.",
+    paymentFailed: "Die Zahlung hat nicht geklappt. Drück den Knopf, um neu zu beginnen.",
+    generationFailedRefund: "Hoppla, das hat diesmal nicht geklappt. Deine Zahlung wurde rückgängig gemacht. Drück den Knopf, um es noch einmal zu versuchen!",
+    generationFailedManualRefund: "Hoppla, das hat diesmal nicht geklappt. Deine Zahlung wird erstattet; das kann einige Tage dauern. Drück den Knopf, um neu zu beginnen."
   }
 };

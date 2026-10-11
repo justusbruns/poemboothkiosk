@@ -89,6 +89,7 @@ export const it = {
     title: 'Pronto per la trasformazione?',
     scanToPay: 'Scansiona il codice QR per pagare con il telefono!',
     terminalDown: 'Il terminale di pagamento non è disponibile, paga con il telefono.',
+    qrUpdating: "Creazione del codice QR per il nuovo importo…",
     tap: 'Avvicina la carta per scatenare l\'IA!',
     turnForMore: 'Siete in gruppo? Gira la manopola per altre stampe!',
     onePrint: '1 stampa',
@@ -115,6 +116,11 @@ export const it = {
     pleaseTryAgain: 'Per favore riprova',
     buttonTryAgain: 'Pulsante: Riprova',
     generationFailed: 'Ops! L\'immagine non è stata generata correttamente. Proviamo un\'altra foto!',
-    processingFailed: 'Questa volta non ha funzionato. Premi il pulsante per riprovare!'
+    processingFailed: 'Questa volta non ha funzionato. Premi il pulsante per riprovare!',
+    paymentRequired: "Non è stato possibile confermare il pagamento. Premi il pulsante per ricominciare.",
+    terminalUnavailable: "Il terminale di pagamento non è disponibile al momento. Riprova più tardi.",
+    paymentFailed: "Il pagamento non è andato a buon fine. Premi il pulsante per ricominciare.",
+    generationFailedRefund: "Ops, questa volta non ha funzionato. Il pagamento è stato annullato. Premi il pulsante per riprovare!",
+    generationFailedManualRefund: "Ops, questa volta non ha funzionato. Il pagamento verrà rimborsato; potrebbe richiedere qualche giorno. Premi il pulsante per ricominciare."
   }
 };

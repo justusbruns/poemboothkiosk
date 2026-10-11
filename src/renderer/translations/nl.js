@@ -117,6 +117,7 @@ export const nl = {
     title: 'Klaar voor de transformatie?',
     scanToPay: 'Scan de QR-code om met je telefoon te betalen!',
     terminalDown: 'De pinautomaat is even niet beschikbaar, betaal met je telefoon.',
+    qrUpdating: 'QR-code voor het nieuwe bedrag wordt gemaakt…',
     tap: 'Tap je pas om de AI te ontketenen!',
     turnForMore: 'Ben je met een groepje? Draai voor extra prints!',
     onePrint: '1 print',
@@ -148,6 +149,7 @@ export const nl = {
     paymentRequired: 'De betaling kon niet bevestigd worden. Druk op de knop om opnieuw te beginnen.',
     terminalUnavailable: 'De betaalterminal is even niet beschikbaar. Probeer het later opnieuw.',
     paymentFailed: 'De betaling is niet gelukt. Druk op de knop om opnieuw te beginnen.',
-    generationFailedRefund: 'Oeps, dit keer werkte het niet, je betaling is teruggedraaid. Druk op de knop om het opnieuw te proberen!'
+    generationFailedRefund: 'Oeps, dit keer werkte het niet, je betaling is teruggedraaid. Druk op de knop om het opnieuw te proberen!',
+    generationFailedManualRefund: 'Oeps, dit keer werkte het niet. Je betaling wordt teruggestort; dat kan een paar dagen duren. Druk op de knop om opnieuw te beginnen.'
   }
 };

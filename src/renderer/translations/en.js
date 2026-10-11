@@ -117,6 +117,7 @@ export const en = {
     title: 'Ready for the transformation?',
     scanToPay: 'Scan the QR code to pay with your phone!',
     terminalDown: 'The card terminal is unavailable right now, pay with your phone.',
+    qrUpdating: 'Creating the QR code for the new amount…',
     tap: 'Tap your card to unleash the AI!',
     turnForMore: 'With a group? Turn the knob for extra prints!',
     onePrint: '1 print',
@@ -148,6 +149,7 @@ export const en = {
     paymentRequired: 'The payment could not be confirmed. Press the button to start over.',
     terminalUnavailable: 'The card terminal is unavailable right now. Please try again later.',
     paymentFailed: 'The payment did not go through. Press the button to start over.',
-    generationFailedRefund: 'Oops, it didn\'t work this time, your payment has been reversed. Press the button to try again!'
+    generationFailedRefund: 'Oops, it didn\'t work this time, your payment has been reversed. Press the button to try again!',
+    generationFailedManualRefund: "Oops, it didn't work this time. Your payment will be refunded; this can take a few days. Press the button to start over."
   }
 };

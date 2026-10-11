@@ -2,7 +2,7 @@ import { t } from '../translations/index.js';
 import { formatPrice, getCurrency, getExtraPrintPriceCents, getTierQuantities, isTerminalPayMode } from '../booth/badges.js';
 import { processPhoto } from '../generate.js';
 import { cancelOrder, createOrder, waitForOrder } from '../orders.js';
-import { hidePayQr, renderPayQr } from '../payqr.js';
+import { hidePayQr, renderPayQr, showPayQrLoading } from '../payqr.js';
 import { cancelTypingAnimation } from './poem.js';
 import { handlePrint, resetPrintCircleIdle } from './print.js';
 import { cancelResultTimer, startResultTimer } from './qr.js';
@@ -200,7 +200,10 @@ function changeUpsell(direction) {
   if (next === upsell.extra) return;
   upsell.extra = next;
   renderUpsell(t('result.upsellUpdating'));
-  hidePayQr(elements.resultPanelQr); // QR for the old amount: remove at once
+  // QR for the old amount: keep the tile, show "making your QR" until the new one is there
+  if (state.order && state.order.kind === 'extra_print' && state.order.provider === 'mollie') {
+    showPayQrLoading(elements.resultPanelQr, 160, t('paywall.qrUpdating'));
+  }
   scheduleUpsellOrder();
   armPanelClose(closeUpsell);
 }

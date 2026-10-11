@@ -89,6 +89,7 @@ export const es = {
     title: '¿Listo para la transformación?',
     scanToPay: '¡Escanea el código QR para pagar con tu móvil!',
     terminalDown: 'El datáfono no está disponible ahora, paga con tu móvil.',
+    qrUpdating: "Creando el código QR para el nuevo importe…",
     tap: '¡Acerca tu tarjeta para desatar la IA!',
     turnForMore: '¿Venís en grupo? ¡Gira el mando para más copias!',
     onePrint: '1 copia',
@@ -115,6 +116,11 @@ export const es = {
     pleaseTryAgain: 'Por favor, inténtalo de nuevo',
     buttonTryAgain: 'Botón: Intentar de nuevo',
     generationFailed: '¡Ups! La imagen no se generó correctamente. ¡Intentemos otra foto!',
-    processingFailed: 'Esta vez no funcionó. ¡Presiona el botón para intentarlo de nuevo!'
+    processingFailed: 'Esta vez no funcionó. ¡Presiona el botón para intentarlo de nuevo!',
+    paymentRequired: "No se ha podido confirmar el pago. Pulsa el botón para empezar de nuevo.",
+    terminalUnavailable: "El datáfono no está disponible en este momento. Inténtalo más tarde.",
+    paymentFailed: "El pago no se ha completado. Pulsa el botón para empezar de nuevo.",
+    generationFailedRefund: "Vaya, esta vez no ha funcionado. Se ha anulado tu pago. ¡Pulsa el botón para intentarlo de nuevo!",
+    generationFailedManualRefund: "Vaya, esta vez no ha funcionado. Te devolveremos el pago; puede tardar unos días. Pulsa el botón para empezar de nuevo."
   }
 };

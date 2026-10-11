@@ -89,6 +89,7 @@ export const fr = {
     title: 'Prêt pour la transformation ?',
     scanToPay: 'Scannez le QR code pour payer avec votre téléphone !',
     terminalDown: 'Le terminal de paiement est indisponible, payez avec votre téléphone.',
+    qrUpdating: "Création du QR code pour le nouveau montant…",
     tap: 'Tapez votre carte pour libérer l\'IA !',
     turnForMore: 'En groupe ? Tournez le bouton pour des tirages en plus !',
     onePrint: '1 tirage',
@@ -115,6 +116,11 @@ export const fr = {
     pleaseTryAgain: 'Veuillez réessayer',
     buttonTryAgain: 'Bouton: Réessayer',
     generationFailed: 'Oups! L\'image ne s\'est pas générée correctement. Essayons une autre photo!',
-    processingFailed: 'Cela n\'a pas fonctionné cette fois. Appuyez sur le bouton pour réessayer!'
+    processingFailed: 'Cela n\'a pas fonctionné cette fois. Appuyez sur le bouton pour réessayer!',
+    paymentRequired: "Le paiement n'a pas pu être confirmé. Appuyez sur le bouton pour recommencer.",
+    terminalUnavailable: "Le terminal de paiement est indisponible pour le moment. Réessayez plus tard.",
+    paymentFailed: "Le paiement n'a pas abouti. Appuyez sur le bouton pour recommencer.",
+    generationFailedRefund: "Oups, cela n'a pas fonctionné cette fois. Votre paiement a été annulé. Appuyez sur le bouton pour réessayer !",
+    generationFailedManualRefund: "Oups, cela n'a pas fonctionné cette fois. Votre paiement sera remboursé ; cela peut prendre quelques jours. Appuyez sur le bouton pour recommencer."
   }
 };

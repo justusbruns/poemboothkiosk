@@ -2,7 +2,7 @@ import { t } from './translations/index.js';
 import { formatPrice, getCurrency, getTierPriceCents, getTierQuantities } from './booth/badges.js';
 import { processPhoto } from './generate.js';
 import { cancelOrder, createOrder, OrderError, waitForOrder } from './orders.js';
-import { hidePayQr, renderPayQr } from './payqr.js';
+import { hidePayQr, renderPayQr, showPayQrLoading } from './payqr.js';
 import { showScreen } from './screens.js';
 import { elements, screens, state } from './state.js';
 import { showNotification } from './ui.js';
@@ -219,9 +219,12 @@ export function handlePaywallKnob(direction) {
   s.quantity = quantities[next];
   renderPrice(s.quantity);
   setStatus(t('paywall.updatingTerminal'));
-  // The QR on screen is for the old amount: take it away at once so nobody
-  // scans a link that is about to be replaced.
-  hidePayQr(elements.paywallQr);
+  // The QR on screen is for the old amount: swap it for a "making your QR"
+  // placeholder at once (same tile, no jump) so nobody scans a link that is
+  // about to be replaced. Terminal payments have no QR to replace.
+  if (state.order && state.order.provider === 'mollie') {
+    showPayQrLoading(elements.paywallQr, 220, t('paywall.qrUpdating'));
+  }
 
   if (s.qtyTimer) clearTimeout(s.qtyTimer);
   s.qtyTimer = setTimeout(() => {

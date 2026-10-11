@@ -32,6 +32,28 @@ export function renderPayQr(container, url, size = 220) {
   }
 }
 
+// Keep the QR tile in place while a new QR for a changed amount is being made:
+// same white tile, a small spinner and a line of text.
+export function showPayQrLoading(container, size = 220, text = '') {
+  if (!container) return;
+  container.innerHTML = '';
+  container.style.display = 'flex';
+  const box = document.createElement('div');
+  box.className = 'pay-qr-loading';
+  box.style.width = size + 'px';
+  box.style.height = size + 'px';
+  const spinner = document.createElement('div');
+  spinner.className = 'pay-qr-spinner';
+  box.appendChild(spinner);
+  if (text) {
+    const label = document.createElement('p');
+    label.className = 'pay-qr-loading-text';
+    label.textContent = text;
+    box.appendChild(label);
+  }
+  container.appendChild(box);
+}
+
 export function hidePayQr(container) {
   renderPayQr(container, null);
 }
