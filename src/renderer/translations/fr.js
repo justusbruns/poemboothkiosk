@@ -85,6 +85,15 @@ export const fr = {
     upsellFailed: 'Paiement refusé, tournez le bouton pour réessayer',
     upsellCancelled: 'Aucun paiement reçu'
   },
+  retry: {
+    retakeFailed: "Cela n'a malheureusement pas fonctionné. Votre premier portrait est conservé ; demandez à un membre du personnel si vous souhaitez l'imprimer.",
+    retrying: "Un instant, nous réessayons…",
+    blockedTitle: "Nous n'avons pas pu créer de portrait avec cette photo",
+    blockedBody: "L'IA refuse parfois une photo, par exemple à cause d'un geste, d'un texte ou d'un logo sur un vêtement, ou si votre visage n'est pas bien visible.",
+    errorTitle: "Un problème est survenu",
+    errorBody: "Un problème est survenu lors de la création de votre portrait.",
+    cta: "Appuyez sur le bouton pour une nouvelle photo. Vous avez déjà payé."
+  },
   paywall: {
     title: 'Prêt pour la transformation ?',
     scanToPay: 'Scannez le QR code pour payer avec votre téléphone !',

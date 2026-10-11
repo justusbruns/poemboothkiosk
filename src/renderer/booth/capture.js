@@ -4,6 +4,7 @@ import { flyOutSelectedCard } from './coverflow.js';
 import { isTerminalPayMode } from './badges.js';
 import { processPhoto } from '../generate.js';
 import { startPaywall } from '../paywall.js';
+import { takePrepaidRetake } from '../retry.js';
 import { updateBoothBrandVisibility } from '../screens.js';
 import { elements, state } from '../state.js';
 import { showError } from '../ui.js';
@@ -207,6 +208,14 @@ export async function handleCapture() {
     console.log('[RENDERER] Playing countdown animation...');
     await playCountdownAndCapture();
     console.log('[RENDERER] Photo captured during flash, length:', state.currentPhoto ? state.currentPhoto.length : 0);
+
+    // A paid generation failed and the guest is taking a new photo: no new payment
+    const prepaid = takePrepaidRetake();
+    if (prepaid) {
+      console.log('[RENDERER] New photo for already paid order', prepaid.orderId);
+      await processPhoto({ orderId: prepaid.orderId, newPhoto: true });
+      return;
+    }
 
     if (isTerminalPayMode()) {
       // Pay-first: the guest pays on the card terminal before the AI runs

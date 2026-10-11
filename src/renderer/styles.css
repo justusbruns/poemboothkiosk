@@ -1115,6 +1115,46 @@ h1, h2, h3, h4, h5, h6, p {
 .paywall-status.error { color: #ff6b6b; }
 .paywall-status.ok { color: #4ade80; }
 
+/* Booth banner after a failed paid generation. Central 66% (oval enclosure). */
+.prepaid-banner {
+  position: absolute;
+  left: 50%;
+  top: 14%;
+  transform: translateX(-50%);
+  width: 66%;
+  z-index: 20;
+  padding: 1.3rem 1.4rem;
+  border-radius: 1.4rem;
+  background: rgba(0, 0, 0, 0.78);
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  text-align: center;
+  font-family: 'Inter', sans-serif;
+  color: #ffffff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+
+.prepaid-title {
+  margin: 0 0 0.5rem;
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.prepaid-body {
+  margin: 0 0 0.8rem;
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.prepaid-cta {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #4ade80;
+}
+
 /* Processing screen escalation after payment ("theater") */
 #processing-screen.theater .processing-photo {
   animation: theaterPulse 1.2s ease-in-out infinite;

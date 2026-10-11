@@ -113,6 +113,15 @@ export const en = {
     upsellFailed: 'Payment failed, turn the knob to try again',
     upsellCancelled: 'No payment received'
   },
+  retry: {
+    retakeFailed: "That did not work, sorry. Your first portrait is kept; ask a staff member if you would like it printed.",
+    retrying: "Hang on, we are trying once more…",
+    blockedTitle: "We could not make a portrait from this photo",
+    blockedBody: "The AI sometimes holds a photo back, for example because of a gesture, text or a logo on clothing, or when your face is not clearly in view.",
+    errorTitle: "Something went wrong",
+    errorBody: "Something went wrong while making your portrait.",
+    cta: "Press the button for a new photo. You have already paid."
+  },
   paywall: {
     title: 'Ready for the transformation?',
     scanToPay: 'Scan the QR code to pay with your phone!',

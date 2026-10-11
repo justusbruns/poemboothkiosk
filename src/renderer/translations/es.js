@@ -85,6 +85,15 @@ export const es = {
     upsellFailed: 'Pago rechazado, gira el mando para reintentar',
     upsellCancelled: 'No se recibió el pago'
   },
+  retry: {
+    retakeFailed: "No ha funcionado, lo sentimos. Tu primer retrato se conserva; pide ayuda al personal si quieres imprimirlo.",
+    retrying: "Un momento, lo intentamos de nuevo…",
+    blockedTitle: "No hemos podido crear un retrato con esta foto",
+    blockedBody: "A veces la IA rechaza una foto, por ejemplo por un gesto, un texto o un logotipo en la ropa, o si tu cara no se ve bien.",
+    errorTitle: "Algo ha salido mal",
+    errorBody: "Algo ha salido mal al crear tu retrato.",
+    cta: "Pulsa el botón para una foto nueva. Ya has pagado."
+  },
   paywall: {
     title: '¿Listo para la transformación?',
     scanToPay: '¡Escanea el código QR para pagar con tu móvil!',

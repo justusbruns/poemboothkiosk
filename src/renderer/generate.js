@@ -7,9 +7,12 @@ import { showResultCameraBackground, updateResultActionLabel, updateResultPaymen
 import { showScreen } from './screens.js';
 import { elements, screens, state } from './state.js';
 import { showNotification, updateProgress } from './ui.js';
+import { handlePaidGenerationFailure } from './retry.js';
 
 // opts.orderId: paid kiosk order (pay-first terminal flow) that entitles this
-// generation; opts.retake: the free second generation of that order.
+// generation; opts.retake: the free second generation of that order;
+// opts.retriedSamePhoto / opts.newPhoto: retries after a failed paid
+// generation (see retry.js).
 export async function processPhoto(opts = {}) {
   const orderId = opts.orderId || null;
   try {
@@ -85,6 +88,16 @@ export async function processPhoto(opts = {}) {
     }
 
     const g = state.generate;
+    // Pay-first: the poem was written but its picture could not be rendered,
+    // so there is nothing to hand over: retry (or refund) like any failure.
+    if (orderId && g.paidRenderFailed) {
+      if (g.refund) { // older backend refunded on its own
+        state.order = null;
+        showNotification(t(g.refund === 'refund_required' ? 'error.generationFailedManualRefund' : 'error.generationFailedRefund'));
+        return;
+      }
+      return handlePaidGenerationFailure(opts, 'render_failed');
+    }
     console.log('[RENDERER] Generation finished:', JSON.stringify({
       type: g.type, started: g.started, render: !!g.render, renderError: g.renderError || null,
       ms: Date.now() - g.startedAt
@@ -114,12 +127,19 @@ export async function processPhoto(opts = {}) {
       // payment can only be voided shortly after the tap). 402 = the order
       // was not accepted at all.
       const paymentRejected = /HTTP 402/.test(error && error.message || '');
-      const refund = state.generate && state.generate.refund;
-      state.order = null;
-      showNotification(t(paymentRejected ? 'error.paymentRequired'
-        : refund === 'refund_required' ? 'error.generationFailedManualRefund'
-        : 'error.generationFailedRefund'));
-      return;
+      const g = state.generate || {};
+      if (paymentRejected) {
+        state.order = null;
+        showNotification(t('error.paymentRequired'));
+        return;
+      }
+      if (g.refund) { // older backend refunded on its own
+        state.order = null;
+        showNotification(t(g.refund === 'refund_required' ? 'error.generationFailedManualRefund' : 'error.generationFailedRefund'));
+        return;
+      }
+      // The guest already paid: retry with the same photo, then ask for a new one
+      return handlePaidGenerationFailure(opts, g.errorCode);
     }
     showNotification(t('error.processingFailed'));
   }
@@ -251,11 +271,9 @@ export function handleGenerateEvent(evt) {
       console.error('[RENDERER] Backend render failed:', g.renderError);
       updatePrintContainerVisibility();
       if (state.order) {
-        // Pay-first: no print asset means nothing to hand over. The backend
-        // refunds and reports how in a 'payment_refund' event right after;
-        // the message waits for that (or for 'done' on older backends).
-        state.order = null;
-        g.awaitingRefund = true;
+        // Pay-first: no print asset means nothing to hand over; processPhoto
+        // retries (or refunds) once the stream is done.
+        g.paidRenderFailed = true;
         break;
       }
       // Keep the poem on screen; just tell the guest there is no download/print
@@ -264,24 +282,22 @@ export function handleGenerateEvent(evt) {
 
     case 'error':
       g.error = evt.error || 'generation failed';
+      g.errorCode = evt.code || null; // e.g. content_blocked: the model refused this photo
       break; // the invoke rejects; processPhoto's catch handles it
+
+    case 'order_attempt_released':
+      // Pay-first: the failed attempt does not count against the order
+      g.attemptReleased = evt.released !== false;
+      break;
 
     case 'payment_refund':
       // Pay-first: was the payment of a failed generation really returned?
       g.refund = evt.status;
       console.log(`[RENDERER] Payment refund for order ${evt.order_id}: ${evt.status}`);
-      if (g.awaitingRefund) {
-        g.awaitingRefund = false;
-        showNotification(t(evt.status === 'refund_required' ? 'error.generationFailedManualRefund' : 'error.generationFailedRefund'));
-      }
       break;
 
     case 'done':
       g.done = true;
-      if (g.awaitingRefund) { // backend without 'payment_refund'
-        g.awaitingRefund = false;
-        showNotification(t('error.generationFailedRefund'));
-      }
       if (g.type === 'poem' && !g.render && !g.renderError) {
         state.isProcessing = false;
         console.warn('[RENDERER] Stream done without render result');

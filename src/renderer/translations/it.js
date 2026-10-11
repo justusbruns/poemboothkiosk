@@ -85,6 +85,15 @@ export const it = {
     upsellFailed: 'Pagamento rifiutato, gira la manopola per riprovare',
     upsellCancelled: 'Nessun pagamento ricevuto'
   },
+  retry: {
+    retakeFailed: "Purtroppo non ha funzionato. Il tuo primo ritratto resta salvato; chiedi al personale se vuoi stamparlo.",
+    retrying: "Un attimo, riproviamo…",
+    blockedTitle: "Non siamo riusciti a creare un ritratto da questa foto",
+    blockedBody: "A volte l'IA blocca una foto, ad esempio per un gesto, una scritta o un logo sui vestiti, o se il viso non è ben visibile.",
+    errorTitle: "Qualcosa è andato storto",
+    errorBody: "Qualcosa è andato storto durante la creazione del ritratto.",
+    cta: "Premi il pulsante per una nuova foto. Hai già pagato."
+  },
   paywall: {
     title: 'Pronto per la trasformazione?',
     scanToPay: 'Scansiona il codice QR per pagare con il telefono!',

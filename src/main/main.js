@@ -1032,6 +1032,21 @@ ipcMain.handle('order:status', async (event, orderId) => {
   }
 });
 
+ipcMain.handle('order:refund', async (event, orderId, reason) => {
+  if (USE_MOCK_TERMINAL) {
+    const o = mockOrders.get(orderId);
+    if (o) { o.status = 'cancelled'; o.failure_reason = 'refunded:' + (reason || 'generation_failed'); }
+    return { refunded: true, status: 'cancelled' };
+  }
+  if (!apiClient) throw new Error('API client not initialized');
+  try {
+    return await apiClient.refundOrder(orderId, reason);
+  } catch (error) {
+    console.error('[MAIN] Order refund error:', error.message);
+    return { refunded: false, error: 'refund_failed', message: error.message };
+  }
+});
+
 ipcMain.handle('order:cancel', async (event, orderId, reason) => {
   if (USE_MOCK_TERMINAL) {
     const o = mockOrders.get(orderId);

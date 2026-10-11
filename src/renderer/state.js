@@ -42,6 +42,7 @@ export const state = {
   order: null,                // active kiosk order { id, kind, status, quantity, amountCents, generationsLeft }
   terminalBusy: false,        // a terminal payment is pending on the result screen (upsell) - don't expire
   resultPhase: null,          // terminal result screen: 'reveal' | 'retake' | 'printed' | 'upsell'
+  prepaidRetake: null,        // { orderId, reason }: paid generation failed, waiting for a new photo
   // Update state
   updateAvailable: false,
   updateInfo: null,
@@ -101,6 +102,11 @@ export const elements = {
   paywallQr: document.getElementById('paywall-qr'),
   paywallHint: document.getElementById('paywall-hint'),
   paywallStatus: document.getElementById('paywall-status'),
+  // Booth banner after a failed paid generation ("take a new photo, already paid")
+  prepaidBanner: document.getElementById('prepaid-banner'),
+  prepaidTitle: document.getElementById('prepaid-title'),
+  prepaidBody: document.getElementById('prepaid-body'),
+  prepaidCta: document.getElementById('prepaid-cta'),
   // Result screen, terminal flow: hint line + retake/upsell panel
   resultHint: document.getElementById('result-hint'),
   resultPanel: document.getElementById('result-panel'),

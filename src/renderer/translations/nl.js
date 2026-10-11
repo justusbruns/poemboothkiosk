@@ -113,6 +113,15 @@ export const nl = {
     upsellFailed: 'Betaling mislukt, draai om het opnieuw te proberen',
     upsellCancelled: 'Geen betaling ontvangen'
   },
+  retry: {
+    retakeFailed: "Dat lukte helaas niet. Je eerste portret blijft bewaard; vraag een medewerker als je het wilt laten printen.",
+    retrying: "Nog even geduld, we proberen het nog een keer…",
+    blockedTitle: "Van deze foto konden we geen portret maken",
+    blockedBody: "De AI houdt soms een foto tegen, bijvoorbeeld door een gebaar, tekst of een logo op kleding, of als je gezicht niet goed in beeld is.",
+    errorTitle: "Dat ging even mis",
+    errorBody: "Er ging iets mis bij het maken van je portret.",
+    cta: "Druk op de knop voor een nieuwe foto. Je hebt al betaald."
+  },
   paywall: {
     title: 'Klaar voor de transformatie?',
     scanToPay: 'Scan de QR-code om met je telefoon te betalen!',

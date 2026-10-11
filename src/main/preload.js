@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   orderCreate: (kind, quantity, sessionId, opts) => ipcRenderer.invoke('order:create', kind, quantity, sessionId, opts),
   orderStatus: (orderId) => ipcRenderer.invoke('order:status', orderId),
   orderCancel: (orderId, reason) => ipcRenderer.invoke('order:cancel', orderId, reason),
+  orderRefund: (orderId, reason) => ipcRenderer.invoke('order:refund', orderId, reason),
 
   // Realtime pokes ('order' | 'config' | 'command') and remote commands
   onPoke: (callback) => ipcRenderer.on('kiosk:poke', (event, reason) => callback(reason)),

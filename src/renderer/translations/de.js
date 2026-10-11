@@ -85,6 +85,15 @@ export const de = {
     upsellFailed: 'Zahlung fehlgeschlagen, drehen zum erneuten Versuch',
     upsellCancelled: 'Keine Zahlung erhalten'
   },
+  retry: {
+    retakeFailed: "Das hat leider nicht geklappt. Dein erstes Porträt bleibt gespeichert; frag einen Mitarbeiter, wenn du es drucken lassen möchtest.",
+    retrying: "Einen Moment, wir versuchen es noch einmal…",
+    blockedTitle: "Aus diesem Foto konnten wir kein Porträt machen",
+    blockedBody: "Die KI hält manchmal ein Foto zurück, zum Beispiel wegen einer Geste, Text oder einem Logo auf der Kleidung, oder wenn dein Gesicht nicht gut zu sehen ist.",
+    errorTitle: "Da ist etwas schiefgelaufen",
+    errorBody: "Beim Erstellen deines Porträts ist etwas schiefgelaufen.",
+    cta: "Drück den Knopf für ein neues Foto. Du hast schon bezahlt."
+  },
   paywall: {
     title: 'Bereit für die Verwandlung?',
     scanToPay: 'Scanne den QR-Code, um mit dem Handy zu bezahlen!',

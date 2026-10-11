@@ -31,7 +31,8 @@ const TOKEN_REFRESH_MARGIN_MS = 2 * 60 * 1000;
 //   terminal-payments  pay-first flow on the booth's card terminal
 //   commands           remote restart app / reboot device / reload config
 //   realtime           listens for Supabase Realtime pokes
-const KIOSK_FEATURES = 'terminal-payments,commands,realtime';
+//   generation-retry   failed paid generation: retry / new photo, refund on request
+const KIOSK_FEATURES = 'terminal-payments,commands,realtime,generation-retry';
 
 class ApiClient {
   /**
@@ -761,6 +762,12 @@ class ApiClient {
 
   async getOrder(orderId) {
     return this.request('GET', `/api/kiosk/orders/${encodeURIComponent(orderId)}`);
+  }
+
+  // Give up on a paid order whose portrait could not be made. Resolves with
+  // { refunded, status } (refunded=false: card payment needs a manual refund).
+  async refundOrder(orderId, reason = 'generation_failed') {
+    return this.request('POST', `/api/kiosk/orders/${encodeURIComponent(orderId)}/refund`, { reason });
   }
 
   async cancelOrder(orderId, reason = 'cancelled_by_kiosk') {
