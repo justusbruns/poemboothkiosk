@@ -248,6 +248,12 @@ function updateRetakeCta() {
   }
   elements.actionButtonText.innerHTML = text;
   elements.actionButtonText.style.opacity = '1';
+  // The small line under the row: what turning does here (not the start
+  // screen's 'turn to change style')
+  if (elements.styleHint) {
+    elements.styleHint.textContent = canRetakeStyle() ? t('result.turnPortraitOrStyle') : t('result.turnPortrait');
+    elements.styleHint.style.display = 'block';
+  }
 }
 
 function markPortraitCards(count) {
