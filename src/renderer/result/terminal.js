@@ -60,6 +60,18 @@ function armPanelClose(fn) {
   panelTimer = setTimeout(() => { panelTimer = null; fn(); }, PANEL_IDLE_MS);
 }
 
+// One thing at a time on the result screen: before printing only the print
+// circle; after printing the QR for the digital copy (the print is the main
+// thing the guest paid for, the download is a bonus).
+function showCircles({ qr, print }) {
+  const qrCircle = document.getElementById('qr-circle');
+  const qrBox = qrCircle && qrCircle.closest('.circle-container');
+  if (qrBox) qrBox.style.display = qr ? '' : 'none';
+  if (qr && qrCircle) setTimeout(() => qrCircle.classList.add('show'), 50);
+  if (elements.printContainer) elements.printContainer.style.display = print ? 'flex' : 'none';
+  if (print) document.getElementById('print-circle')?.classList.add('show');
+}
+
 function setPhase(phase) {
   state.resultPhase = phase;
   console.log('[TERMINAL] Result phase:', phase);
@@ -86,13 +98,16 @@ export function enterTerminalResult() {
   if (elements.printLabel) elements.printLabel.textContent = t('result.pressToPrint');
 
   setPhase('reveal');
-  const retake = state.order.generationsLeft > 0 ? `<br/>${t('result.hintRetake')}` : '';
-  setHint(`${t('result.hintPrint')}${retake}`);
+  showCircles({ qr: false, print: true });
+  setHint(state.order.generationsLeft > 0 ? t('result.hintRetake') : '');
   startResultTimer(REVEAL_TIMEOUT_MS);
 }
 
 // Runs after the wipe back to the booth
 export function leaveTerminalResult() {
+  // Restore the shared result layout for the next guest (and other modes)
+  const qrBox = document.getElementById('qr-circle')?.closest('.circle-container');
+  if (qrBox) qrBox.style.display = '';
   if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
   if (state.retakeMode) { state.retakeMode = false; setRetakeChrome(false); }
   hidePanel();
@@ -118,6 +133,7 @@ async function printAllPaid() {
   setPhase('printing');
   hidePanel();
   cancelResultTimer();
+  showCircles({ qr: false, print: true });
   setHint(t('result.hintPrinting'));
 
   while (state.printsRemaining > 0 && state.screen === 'result') {
@@ -134,7 +150,9 @@ async function printAllPaid() {
   if (state.screen !== 'result') return;
   setPhase('printed');
   resetPrintCircleIdle();
-  setHint(canUpsell() ? t('result.hintUpsell') : t('result.hintDone'));
+  if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanForDigital');
+  showCircles({ qr: true, print: false });
+  setHint(canUpsell() ? t('result.hintUpsell') : '');
   startResultTimer(IDLE_AFTER_PRINT_MS);
 }
 
@@ -200,8 +218,8 @@ function closeRetake() {
   setRetakeChrome(false);
   showScreen('result');
   setPhase('reveal');
-  const retake = state.order && state.order.generationsLeft > 0 ? `<br/>${t('result.hintRetake')}` : '';
-  setHint(`${t('result.hintPrint')}${retake}`);
+  showCircles({ qr: false, print: true });
+  setHint(state.order && state.order.generationsLeft > 0 ? t('result.hintRetake') : '');
   startResultTimer(REVEAL_TIMEOUT_MS);
 }
 

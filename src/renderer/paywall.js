@@ -50,7 +50,7 @@ function renderPrice(quantity) {
 function showOrderIfCurrent(s, order) {
   if (!s || s.qtyTimer || !order || order.quantity !== s.quantity) return false;
   applyRail(order);
-  setStatus(order.provider === 'mollie' ? t('paywall.terminalDown') : t('paywall.waitingTerminal'));
+  setStatus(''); // the tap / scan line says it all
   return true;
 }
 
@@ -112,7 +112,7 @@ export async function startPaywall() {
 
   applyText();
   renderPrice(session.quantity);
-  setStatus(t('paywall.waitingTerminal'));
+  setStatus('');
   hidePayQr(elements.paywallQr);
   if (elements.paywallPhoto) elements.paywallPhoto.src = state.currentPhoto || '';
   screens.paywall.classList.remove('charged');
@@ -218,7 +218,8 @@ export function handlePaywallKnob(direction) {
 
   s.quantity = quantities[next];
   renderPrice(s.quantity);
-  setStatus(t('paywall.updatingTerminal'));
+  // QR: the tile itself shows "making the QR"; terminal: a short status line
+  setStatus(state.order && state.order.provider === 'mollie' ? '' : t('paywall.updatingTerminal'));
   // The QR on screen is for the old amount: swap it for a "making your QR"
   // placeholder at once (same tile, no jump) so nobody scans a link that is
   // about to be replaced. Terminal payments have no QR to replace.

@@ -23,7 +23,9 @@ export function canLocalPrint() {
 // pop is done in showQRCode(); here it only catches later printer-status changes.
 export function updatePrintContainerVisibility() {
   if (!elements.printContainer) return;
-  const available = isLocalPrintMode();
+  // Pay-first: after the paid copies are printed the circle makes way for the QR
+  const printedTerminal = isTerminalPayMode() && (state.resultPhase === 'printed' || state.resultPhase === 'upsell');
+  const available = isLocalPrintMode() && !printedTerminal;
   elements.printContainer.style.display = available ? 'flex' : 'none';
   const printCircle = document.getElementById('print-circle');
   if (printCircle) {

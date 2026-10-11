@@ -11,7 +11,7 @@ export function updateResultActionLabel() {
 
   // Pay-first (terminal): prints come out of the booth; the QR only saves the photo
   if (isTerminalPayMode()) {
-    elements.qrLabel.innerHTML = t('result.scanToSave');
+    elements.qrLabel.innerHTML = t('result.scanForDigital');
     return;
   }
 
