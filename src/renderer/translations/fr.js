@@ -79,6 +79,7 @@ export const fr = {
     upsellTitle: 'Tirages supplémentaires',
     upsellPrints: '+{count} tirage(s)',
     upsellTap: 'Tapez votre carte sur le terminal',
+    upsellScan: 'Scannez le QR code pour payer avec votre téléphone',
     upsellUpdating: 'Mise à jour du montant…',
     upsellPaid: 'Payé ! Impression...',
     upsellFailed: 'Paiement refusé, tournez le bouton pour réessayer',
@@ -86,6 +87,8 @@ export const fr = {
   },
   paywall: {
     title: 'Prêt pour la transformation ?',
+    scanToPay: 'Scannez le QR code pour payer avec votre téléphone !',
+    terminalDown: 'Le terminal de paiement est indisponible, payez avec votre téléphone.',
     tap: 'Tapez votre carte pour libérer l\'IA !',
     turnForMore: 'En groupe ? Tournez le bouton pour des tirages en plus !',
     onePrint: '1 tirage',

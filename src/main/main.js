@@ -986,12 +986,15 @@ function mockOrderView(o) {
   return {
     order_id: o.id, kind: o.kind, status: o.status, failure_reason: o.failure_reason,
     quantity: o.quantity, amount_cents: o.amount_cents, currency: 'EUR',
-    session_id: o.session_id, generations_left: o.kind === 'generation' ? 2 : 0
+    session_id: o.session_id, generations_left: o.kind === 'generation' ? 2 : 0,
+    provider: o.provider, pay_url: o.provider === 'mollie' && o.status === 'pending' ? 'https://example.com/mock-pay/' + o.id : null
   };
 }
 function mockCreateOrder(kind, quantity, sessionId) {
   const id = require('crypto').randomUUID();
-  const o = { id, kind, quantity, session_id: sessionId || null, status: 'pending', failure_reason: null, amount_cents: null };
+  // --mock-terminal=qr: the terminal is "down", orders come back as a Mollie QR
+  const provider = MOCK_TERMINAL_OUTCOME === 'qr' ? 'mollie' : 'terminal';
+  const o = { id, kind, quantity, session_id: sessionId || null, status: 'pending', failure_reason: null, amount_cents: null, provider };
   mockOrders.set(id, o);
   const settle = MOCK_TERMINAL_OUTCOME === 'fail' ? ['failed', 'refusal']
     : MOCK_TERMINAL_OUTCOME === 'timeout' ? ['cancelled', 'cancelled']
@@ -999,16 +1002,16 @@ function mockCreateOrder(kind, quantity, sessionId) {
   setTimeout(() => {
     if (o.status === 'pending') { o.status = settle[0]; o.failure_reason = settle[1]; }
     console.log(`[MAIN][MOCK-TERMINAL] order ${id} → ${o.status}`);
-  }, MOCK_TERMINAL_OUTCOME === 'timeout' ? 8000 : 3000);
+  }, MOCK_TERMINAL_OUTCOME === 'timeout' ? 8000 : MOCK_TERMINAL_OUTCOME === 'qr' ? 8000 : 3000);
   console.log(`[MAIN][MOCK-TERMINAL] created ${kind} ×${quantity} order ${id}`);
   return mockOrderView(o);
 }
 
-ipcMain.handle('order:create', async (event, kind, quantity, sessionId = null) => {
+ipcMain.handle('order:create', async (event, kind, quantity, sessionId = null, opts = {}) => {
   if (USE_MOCK_TERMINAL) return mockCreateOrder(kind, quantity, sessionId);
   if (!apiClient) throw new Error('API client not initialized');
   try {
-    return await apiClient.createOrder(kind, quantity, sessionId);
+    return await apiClient.createOrder(kind, quantity, sessionId, opts || {});
   } catch (error) {
     console.error('[MAIN] Order create error:', error.message);
     // Plain object: Electron strips custom props from thrown errors

@@ -2,6 +2,7 @@ import { t } from './translations/index.js';
 import { formatPrice, getCurrency, getTierPriceCents, getTierQuantities } from './booth/badges.js';
 import { processPhoto } from './generate.js';
 import { cancelOrder, createOrder, OrderError, waitForOrder } from './orders.js';
+import { hidePayQr, renderPayQr } from './payqr.js';
 import { showScreen } from './screens.js';
 import { elements, screens, state } from './state.js';
 import { showNotification } from './ui.js';
@@ -18,6 +19,7 @@ import { showNotification } from './ui.js';
 
 const POLL_INTERVAL_MS = 750;      // one booth, one terminal: cheap enough
 const PAY_TIMEOUT_MS = 90000;      // nobody tapped: back to the booth
+const QR_PAY_TIMEOUT_MS = 180000;  // paying by phone (Mollie) takes longer
 const QTY_DEBOUNCE_MS = 700;       // knob rest before the terminal amount is replaced
 const MAX_AUTO_RETRIES = 2;        // declined / timed-out terminal payments retried silently
 
@@ -39,6 +41,18 @@ function renderPrice(quantity) {
   }
   if (elements.paywallQty) {
     elements.paywallQty.textContent = quantity === 1 ? t('paywall.onePrint') : t('paywall.nPrints').replace('{count}', String(quantity));
+  }
+}
+
+// Terminal: "tap your card". Terminal unavailable: QR to pay by phone (Mollie).
+function applyRail(order) {
+  const qr = order && order.provider === 'mollie' && order.payUrl;
+  if (qr) {
+    renderPayQr(elements.paywallQr, order.payUrl, 220);
+    if (elements.paywallTap) elements.paywallTap.textContent = t('paywall.scanToPay');
+  } else {
+    hidePayQr(elements.paywallQr);
+    if (elements.paywallTap) elements.paywallTap.textContent = t('paywall.tap');
   }
 }
 
@@ -65,6 +79,7 @@ async function bailOut(message) {
   abortSession();
   if (current && current.status === 'pending') cancelOrder(current.id, 'paywall_abandoned');
   state.order = null;
+  hidePayQr(elements.paywallQr);
   screens.paywall.classList.remove('charged');
   showNotification(message);
 }
@@ -88,6 +103,7 @@ export async function startPaywall() {
   applyText();
   renderPrice(session.quantity);
   setStatus(t('paywall.waitingTerminal'));
+  hidePayQr(elements.paywallQr);
   if (elements.paywallPhoto) elements.paywallPhoto.src = state.currentPhoto || '';
   screens.paywall.classList.remove('charged');
   showScreen('paywall');
@@ -116,8 +132,14 @@ async function runPayment() {
   }
   if (signal.aborted || s.done) return; // quantity changed while creating → superseded
 
-  setStatus(t('paywall.waitingTerminal'));
-  const result = await waitForOrder(order.id, { intervalMs: POLL_INTERVAL_MS, timeoutMs: PAY_TIMEOUT_MS, signal });
+  const byPhone = order.provider === 'mollie';
+  applyRail(order);
+  setStatus(byPhone ? t('paywall.terminalDown') : t('paywall.waitingTerminal'));
+  const result = await waitForOrder(order.id, {
+    intervalMs: POLL_INTERVAL_MS,
+    timeoutMs: byPhone ? QR_PAY_TIMEOUT_MS : PAY_TIMEOUT_MS,
+    signal
+  });
   if (s.done || signal.aborted || result.status === 'aborted') return;
 
   switch (result.status) {
@@ -157,6 +179,7 @@ async function onPaid(order) {
 
   // Escalate the energy for a beat, then hand over to the generation theater
   setStatus(t('paywall.paid'), 'ok');
+  hidePayQr(elements.paywallQr);
   screens.paywall.classList.add('charged');
   await new Promise(r => setTimeout(r, 900));
   session = null;

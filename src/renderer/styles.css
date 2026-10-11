@@ -1032,6 +1032,29 @@ h1, h2, h3, h4, h5, h6, p {
   margin-top: 0.35rem;
 }
 
+/* QR fallback: pay by phone when the card terminal is unavailable */
+.paywall-qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+  border-radius: 1.2rem;
+  background: #ffffff;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  margin-top: 0.4rem;
+}
+
+.result-panel-qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  margin: 0.8rem auto 0;
+  width: max-content;
+  border-radius: 1rem;
+  background: #ffffff;
+}
+
 .paywall-tap {
   font-family: 'Inter', sans-serif;
   font-size: 1.35rem;

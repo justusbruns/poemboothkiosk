@@ -48,7 +48,7 @@ These flags can be combined with `electron .`:
 - `--real-printer` — Force real printer in dev mode
 - `--force-wifi` — Force WiFi setup screen
 - `--force-pair` — Show the device pairing screen even if credentials are stored (re-pair this booth)
-- `--mock-terminal` — Force the pay-first card-terminal flow with locally settled orders (paid after 3 s); `--mock-terminal=fail` declines, `--mock-terminal=timeout` lets the terminal give up. Works with a portal-mode booking (the backend then ignores `order_id`).
+- `--mock-terminal` — Force the pay-first card-terminal flow with locally settled orders (paid after 3 s); `--mock-terminal=fail` declines, `--mock-terminal=timeout` lets the terminal give up, `--mock-terminal=qr` simulates a broken terminal (orders come back as a Mollie QR). Works with a portal-mode booking (the backend then ignores `order_id`).
 
 ## Architecture Overview
 
@@ -208,7 +208,7 @@ Devices must be provisioned BEFORE deployment using the setup script in the book
 `config.payment.mode` (from the booking's `payment_config.mode`) selects the flow:
 
 - **`portal`** (default, Mollie): generate first; the guest pays on their phone via the QR to print. The kiosk never prints from its button (`isPaidPrintActive()`); paid prints arrive as portal print jobs (`printJobService.js`).
-- **`terminal`** (Yourselv card terminal in the booth pillar, `isTerminalPayMode()`): pay first. After the photo the **paywall** screen shows the price of 1 print (`payment.print_tiers`); the knob picks more prints (cancel + new order, debounced; the terminal cannot change an amount). The kiosk polls `GET /api/kiosk/orders/{id}` every 750 ms; `paid` → `processPhoto({orderId})` → `/api/kiosk/generate` with `order_id` (402 without a paid order). On the result screen: button = print the paid copies right away, knob before the first print = one free retake with another style (same order), knob after printing = extra copies (`extra_print` order, price = difference to the next tier), 20 s after the last print → booth. The backend commits the terminal payment on a successful render and refunds it when the first generation fails. No payment code or Yourselv key lives on the kiosk.
+- **`terminal`** (Yourselv card terminal in the booth pillar, `isTerminalPayMode()`): pay first. After the photo the **paywall** screen shows the price of 1 print (`payment.print_tiers`); the knob picks more prints (cancel + new order, debounced; the terminal cannot change an amount). When the terminal is unavailable (no terminal id, offline, Yourselv refuses) the backend pays the same order with a Mollie checkout instead (`provider: 'mollie'`, `pay_url` shown as a QR on the paywall and in the extra-print panel; the portrait is still only made after payment). The kiosk polls `GET /api/kiosk/orders/{id}` every 750 ms (and immediately on a Realtime 'order' poke); `paid` → `processPhoto({orderId})` → `/api/kiosk/generate` with `order_id` (402 without a paid order). On the result screen: button = print the paid copies right away, knob before the first print = one free retake with another style (same order), knob after printing = extra copies (`extra_print` order, price = difference to the next tier), 20 s after the last print → booth. The backend commits the terminal payment on a successful render and refunds it when the first generation fails. No payment code or Yourselv key lives on the kiosk.
 
 ## Configuration
 

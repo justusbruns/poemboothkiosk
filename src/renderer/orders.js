@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { getCurrentLanguage } from './translations/index.js';
 
 // =============================================================================
 // Kiosk orders (pay-first on the booth's card terminal)
@@ -27,19 +28,26 @@ function toState(view) {
     amountCents: view.amount_cents,
     currency: view.currency || 'EUR',
     sessionId: view.session_id || null,
-    generationsLeft: typeof view.generations_left === 'number' ? view.generations_left : 0
+    generationsLeft: typeof view.generations_left === 'number' ? view.generations_left : 0,
+    // 'terminal' = tap the card on the booth; 'mollie' = scan payUrl (QR fallback)
+    provider: view.provider || 'terminal',
+    payUrl: view.pay_url || null
   };
 }
 
 // Create an order and make it the current one. Throws OrderError with
 // code 'terminal_unavailable' when the booth has no working terminal.
 export async function createOrder(kind, quantity, sessionId = null) {
-  const view = await window.electronAPI.orderCreate(kind, quantity, sessionId);
+  // The backend falls back to a Mollie QR when the booth's terminal is unavailable
+  const view = await window.electronAPI.orderCreate(kind, quantity, sessionId, {
+    allowMollieFallback: true,
+    locale: getCurrentLanguage() || 'nl'
+  });
   if (!view || view.error) {
     throw new OrderError((view && view.error) || 'order_failed', view && view.message, view && view.status);
   }
   state.order = toState(view);
-  console.log(`[ORDER] Created ${kind} ×${quantity}: ${state.order.id} (${state.order.amountCents}c, ${state.order.status})`);
+  console.log(`[ORDER] Created ${kind} ×${quantity}: ${state.order.id} (${state.order.amountCents}c, ${state.order.status}, via ${state.order.provider})`);
   return state.order;
 }
 

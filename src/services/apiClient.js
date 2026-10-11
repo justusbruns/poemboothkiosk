@@ -744,9 +744,14 @@ class ApiClient {
   // { order_id, status, quantity, amount_cents, currency, generations_left, ... }.
   // Rejects with error.code === 'terminal_unavailable' (HTTP 503) when the
   // booth has no usable terminal.
-  async createOrder(kind, quantity, sessionId = null) {
+  // opts.allowMollieFallback: when the booth's terminal is unavailable the
+  // backend may answer with a Mollie checkout instead (provider 'mollie',
+  // pay_url shown as a QR). opts.locale: guest language for that checkout.
+  async createOrder(kind, quantity, sessionId = null, opts = {}) {
     const body = { kind, quantity };
     if (sessionId) body.session_id = sessionId;
+    if (opts.allowMollieFallback) body.allow_mollie_fallback = true;
+    if (opts.locale) body.locale = String(opts.locale).slice(0, 5);
     try {
       return await this.request('POST', '/api/kiosk/orders', body);
     } catch (error) {

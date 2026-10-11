@@ -2,6 +2,7 @@ import { t } from '../translations/index.js';
 import { formatPrice, getCurrency, getExtraPrintPriceCents, getTierQuantities, isTerminalPayMode } from '../booth/badges.js';
 import { processPhoto } from '../generate.js';
 import { cancelOrder, createOrder, waitForOrder } from '../orders.js';
+import { hidePayQr, renderPayQr } from '../payqr.js';
 import { cancelTypingAnimation } from './poem.js';
 import { handlePrint, resetPrintCircleIdle } from './print.js';
 import { cancelResultTimer, startResultTimer } from './qr.js';
@@ -47,6 +48,7 @@ function showPanel(title, value, sub, cls = '') {
 }
 
 function hidePanel() {
+  hidePayQr(elements.resultPanelQr);
   if (elements.resultPanel) elements.resultPanel.style.display = 'none';
   if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; }
 }
@@ -235,9 +237,16 @@ async function runUpsellOrder(u) {
   }
   if (upsell !== u || signal.aborted) return;
   if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; } // a live terminal amount keeps the panel open
-  renderUpsell(t('result.upsellTap'));
+  const byPhone = order.provider === 'mollie' && order.payUrl;
+  renderUpsell(byPhone ? t('result.upsellScan') : t('result.upsellTap'));
+  if (byPhone) renderPayQr(elements.resultPanelQr, order.payUrl, 160);
 
-  const result = await waitForOrder(order.id, { intervalMs: UPSELL_POLL_MS, timeoutMs: UPSELL_TIMEOUT_MS, signal });
+  const result = await waitForOrder(order.id, {
+    intervalMs: UPSELL_POLL_MS,
+    timeoutMs: byPhone ? UPSELL_TIMEOUT_MS * 2 : UPSELL_TIMEOUT_MS,
+    signal
+  });
+  hidePayQr(elements.resultPanelQr);
   if (upsell !== u || signal.aborted || result.status === 'aborted') return;
 
   if (result.status === 'paid') return onUpsellPaid(result);

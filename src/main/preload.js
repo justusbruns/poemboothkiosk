@@ -28,7 +28,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   apiLogPrint: (sessionId) => ipcRenderer.invoke('api:log-print', sessionId),
 
   // Kiosk orders (pay-first on the booth's card terminal; brokered by the backend)
-  orderCreate: (kind, quantity, sessionId) => ipcRenderer.invoke('order:create', kind, quantity, sessionId),
+  orderCreate: (kind, quantity, sessionId, opts) => ipcRenderer.invoke('order:create', kind, quantity, sessionId, opts),
   orderStatus: (orderId) => ipcRenderer.invoke('order:status', orderId),
   orderCancel: (orderId, reason) => ipcRenderer.invoke('order:cancel', orderId, reason),
 

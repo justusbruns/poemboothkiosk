@@ -79,6 +79,7 @@ export const es = {
     upsellTitle: 'Copias extra',
     upsellPrints: '+{count} copia(s)',
     upsellTap: 'Acerca tu tarjeta al terminal',
+    upsellScan: 'Escanea el código QR para pagar con tu móvil',
     upsellUpdating: 'Actualizando el importe…',
     upsellPaid: '¡Pagado! Imprimiendo...',
     upsellFailed: 'Pago rechazado, gira el mando para reintentar',
@@ -86,6 +87,8 @@ export const es = {
   },
   paywall: {
     title: '¿Listo para la transformación?',
+    scanToPay: '¡Escanea el código QR para pagar con tu móvil!',
+    terminalDown: 'El datáfono no está disponible ahora, paga con tu móvil.',
     tap: '¡Acerca tu tarjeta para desatar la IA!',
     turnForMore: '¿Venís en grupo? ¡Gira el mando para más copias!',
     onePrint: '1 copia',

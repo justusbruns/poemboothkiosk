@@ -79,6 +79,7 @@ export const de = {
     upsellTitle: 'Extra Drucke',
     upsellPrints: '+{count} Druck(e)',
     upsellTap: 'Tipp deine Karte an das Terminal',
+    upsellScan: 'Scanne den QR-Code, um mit dem Handy zu bezahlen',
     upsellUpdating: 'Betrag wird angepasst…',
     upsellPaid: 'Bezahlt! Wird gedruckt...',
     upsellFailed: 'Zahlung fehlgeschlagen, drehen zum erneuten Versuch',
@@ -86,6 +87,8 @@ export const de = {
   },
   paywall: {
     title: 'Bereit für die Verwandlung?',
+    scanToPay: 'Scanne den QR-Code, um mit dem Handy zu bezahlen!',
+    terminalDown: 'Das Kartenterminal ist gerade nicht verfügbar, bezahle mit deinem Handy.',
     tap: 'Tipp deine Karte und entfessle die KI!',
     turnForMore: 'In der Gruppe? Dreh am Knopf für extra Drucke!',
     onePrint: '1 Druck',

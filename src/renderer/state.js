@@ -98,6 +98,7 @@ export const elements = {
   paywallPrice: document.getElementById('paywall-price'),
   paywallQty: document.getElementById('paywall-qty'),
   paywallTap: document.getElementById('paywall-tap'),
+  paywallQr: document.getElementById('paywall-qr'),
   paywallHint: document.getElementById('paywall-hint'),
   paywallStatus: document.getElementById('paywall-status'),
   // Result screen, terminal flow: hint line + retake/upsell panel
@@ -106,6 +107,7 @@ export const elements = {
   resultPanelTitle: document.getElementById('result-panel-title'),
   resultPanelValue: document.getElementById('result-panel-value'),
   resultPanelSub: document.getElementById('result-panel-sub'),
+  resultPanelQr: document.getElementById('result-panel-qr'),
   processingPhoto: document.getElementById('processing-photo'),
   processingStatus: document.getElementById('processing-status'),
   progressFill: document.getElementById('progress-fill'),

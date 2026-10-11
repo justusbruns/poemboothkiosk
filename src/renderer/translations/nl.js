@@ -107,6 +107,7 @@ export const nl = {
     upsellTitle: 'Extra prints',
     upsellPrints: '+{count} print(s)',
     upsellTap: 'Tap je pas op de terminal',
+    upsellScan: 'Scan de QR-code om met je telefoon te betalen',
     upsellUpdating: 'Bedrag aanpassen…',
     upsellPaid: 'Betaald! Printen...',
     upsellFailed: 'Betaling mislukt, draai om het opnieuw te proberen',
@@ -114,6 +115,8 @@ export const nl = {
   },
   paywall: {
     title: 'Klaar voor de transformatie?',
+    scanToPay: 'Scan de QR-code om met je telefoon te betalen!',
+    terminalDown: 'De pinautomaat is even niet beschikbaar, betaal met je telefoon.',
     tap: 'Tap je pas om de AI te ontketenen!',
     turnForMore: 'Ben je met een groepje? Draai voor extra prints!',
     onePrint: '1 print',

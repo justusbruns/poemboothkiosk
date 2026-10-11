@@ -107,6 +107,7 @@ export const en = {
     upsellTitle: 'Extra prints',
     upsellPrints: '+{count} print(s)',
     upsellTap: 'Tap your card on the terminal',
+    upsellScan: 'Scan the QR code to pay with your phone',
     upsellUpdating: 'Updating the amount…',
     upsellPaid: 'Paid! Printing...',
     upsellFailed: 'Payment failed, turn the knob to try again',
@@ -114,6 +115,8 @@ export const en = {
   },
   paywall: {
     title: 'Ready for the transformation?',
+    scanToPay: 'Scan the QR code to pay with your phone!',
+    terminalDown: 'The card terminal is unavailable right now, pay with your phone.',
     tap: 'Tap your card to unleash the AI!',
     turnForMore: 'With a group? Turn the knob for extra prints!',
     onePrint: '1 print',
