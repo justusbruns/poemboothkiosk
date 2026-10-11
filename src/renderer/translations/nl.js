@@ -90,8 +90,6 @@ export const nl = {
     ]
   },
   result: {
-    turnPortraitOrStyle: "Draai om een portret of stijl te kiezen",
-    turnPortrait: "Draai om een portret te kiezen",
     hintCompare: "Of draai om je portretten te vergelijken",
     portraitN: "Portret {n}",
     pickCta: "Druk om dit<br/>portret te kiezen",

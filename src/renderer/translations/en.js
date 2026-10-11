@@ -90,8 +90,6 @@ export const en = {
     ]
   },
   result: {
-    turnPortraitOrStyle: "Turn to pick a portrait or style",
-    turnPortrait: "Turn to pick a portrait",
     hintCompare: "Or turn to compare your portraits",
     portraitN: "Portrait {n}",
     pickCta: "Press to choose<br/>this portrait",

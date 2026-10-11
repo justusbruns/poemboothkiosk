@@ -62,8 +62,6 @@ export const es = {
     ]
   },
   result: {
-    turnPortraitOrStyle: "Gira para elegir un retrato o un estilo",
-    turnPortrait: "Gira para elegir un retrato",
     hintCompare: "O gira para comparar tus retratos",
     portraitN: "Retrato {n}",
     pickCta: "Pulsa para elegir<br/>este retrato",
