@@ -44,6 +44,16 @@ function renderPrice(quantity) {
   }
 }
 
+// Only show an order's QR / status when it is for the amount on screen and no
+// newer knob turn is waiting: otherwise a swap is underway and the screen keeps
+// saying "updating the amount".
+function showOrderIfCurrent(s, order) {
+  if (!s || s.qtyTimer || !order || order.quantity !== s.quantity) return false;
+  applyRail(order);
+  setStatus(order.provider === 'mollie' ? t('paywall.terminalDown') : t('paywall.waitingTerminal'));
+  return true;
+}
+
 // Terminal: "tap your card". Terminal unavailable: QR to pay by phone (Mollie).
 function applyRail(order) {
   const qr = order && order.provider === 'mollie' && order.payUrl;
@@ -123,18 +133,23 @@ async function runPayment() {
 
   let order;
   try {
-    order = await createOrder('generation', quantity);
+    s.creating = createOrder('generation', quantity);
+    order = await s.creating;
   } catch (e) {
     if (signal.aborted || s.done) return;
     console.error('[PAYWALL] Order create failed:', e.code || e.message);
     const unavailable = e instanceof OrderError && (e.code === 'terminal_unavailable' || e.status === 503);
     return bailOut(unavailable ? t('error.terminalUnavailable') : t('error.paymentFailed'));
   }
-  if (signal.aborted || s.done) return; // quantity changed while creating → superseded
+  if (signal.aborted || s.done) {
+    // Quantity changed (or the guest left) while this order was being created:
+    // it is outdated before anyone saw it, so close it right away.
+    cancelOrder(order.id, 'superseded');
+    return;
+  }
 
   const byPhone = order.provider === 'mollie';
-  applyRail(order);
-  setStatus(byPhone ? t('paywall.terminalDown') : t('paywall.waitingTerminal'));
+  showOrderIfCurrent(s, order);
   const result = await waitForOrder(order.id, {
     intervalMs: POLL_INTERVAL_MS,
     timeoutMs: byPhone ? QR_PAY_TIMEOUT_MS : PAY_TIMEOUT_MS,
@@ -204,25 +219,52 @@ export function handlePaywallKnob(direction) {
   s.quantity = quantities[next];
   renderPrice(s.quantity);
   setStatus(t('paywall.updatingTerminal'));
+  // The QR on screen is for the old amount: take it away at once so nobody
+  // scans a link that is about to be replaced.
+  hidePayQr(elements.paywallQr);
 
   if (s.qtyTimer) clearTimeout(s.qtyTimer);
-  s.qtyTimer = setTimeout(async () => {
+  s.qtyTimer = setTimeout(() => {
     s.qtyTimer = null;
-    if (s.done) return;
-    const stale = state.order;
-    if (s.abort) s.abort.abort();        // stop polling the old order
-    if (stale && stale.status === 'pending') {
-      const final = await cancelOrder(stale.id, 'quantity_changed');
-      // The guest tapped just before we cancelled and the payment was already
-      // committed: that order stands — honour it instead of charging again.
-      if (final && final.status === 'paid' && !s.done) {
-        s.quantity = final.quantity;
-        renderPrice(s.quantity);
-        return onPaid(final);
-      }
-    }
-    if (!s.done) runPayment();
+    queueReplace(s);
   }, QTY_DEBOUNCE_MS);
+}
+
+// Replace the pending order with one for the current quantity. Replacements
+// run strictly one after another (a guest who keeps turning while the previous
+// swap is still talking to the backend must not end up with two open orders).
+function queueReplace(s) {
+  s.replaceChain = (s.replaceChain || Promise.resolve()).then(() => replaceOrder(s)).catch((e) => {
+    console.warn('[PAYWALL] Order replace failed:', e && e.message);
+  });
+}
+
+async function replaceOrder(s) {
+  if (s.done) return;
+  // Let an order that is still being created finish first, then decide
+  if (s.creating) await s.creating.catch(() => {});
+  if (s.done || session !== s) return;
+
+  const current = state.order;
+  if (current && current.status === 'pending' && current.quantity === s.quantity) {
+    showOrderIfCurrent(s, current); // already the right amount (guest turned back and forth)
+    return;
+  }
+
+  if (s.abort) s.abort.abort(); // stop polling the old order
+  if (current && current.status === 'pending') {
+    const final = await cancelOrder(current.id, 'quantity_changed');
+    // The guest paid just before we cancelled: that order stands, honour it
+    // instead of charging again.
+    if (final && final.status === 'paid' && !s.done) {
+      s.quantity = final.quantity;
+      renderPrice(s.quantity);
+      return onPaid(final);
+    }
+  }
+  if (s.done || session !== s) return;
+  runPayment();                 // creates the new order and starts waiting...
+  await s.creating?.catch(() => {}); // ...the next replacement waits for that creation
 }
 
 // Dev/operator escape: leave the paywall and cancel any pending order

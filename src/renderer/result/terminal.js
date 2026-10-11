@@ -200,6 +200,7 @@ function changeUpsell(direction) {
   if (next === upsell.extra) return;
   upsell.extra = next;
   renderUpsell(t('result.upsellUpdating'));
+  hidePayQr(elements.resultPanelQr); // QR for the old amount: remove at once
   scheduleUpsellOrder();
   armPanelClose(closeUpsell);
 }
@@ -209,6 +210,9 @@ function scheduleUpsellOrder() {
   if (u.timer) clearTimeout(u.timer);
   u.timer = setTimeout(async () => {
     u.timer = null;
+    if (upsell !== u) return;
+    // One swap at a time: wait for an order that is still being created
+    if (u.creating) await u.creating.catch(() => {});
     if (upsell !== u) return;
     if (u.abort) u.abort.abort();
     const stale = state.order && state.order.kind === 'extra_print' && state.order.status === 'pending' ? state.order : null;
@@ -226,7 +230,8 @@ async function runUpsellOrder(u) {
   state.terminalBusy = true;
   let order;
   try {
-    order = await createOrder('extra_print', u.extra, state.currentSession && state.currentSession.id);
+    u.creating = createOrder('extra_print', u.extra, state.currentSession && state.currentSession.id);
+    order = await u.creating;
   } catch (e) {
     if (upsell !== u || signal.aborted) return;
     console.error('[TERMINAL] Extra-print order failed:', e.code || e.message);
@@ -235,7 +240,10 @@ async function runUpsellOrder(u) {
     armPanelClose(closeUpsell);
     return;
   }
-  if (upsell !== u || signal.aborted) return;
+  if (upsell !== u || signal.aborted) {
+    cancelOrder(order.id, 'superseded'); // outdated before it was shown
+    return;
+  }
   if (panelTimer) { clearTimeout(panelTimer); panelTimer = null; } // a live terminal amount keeps the panel open
   const byPhone = order.provider === 'mollie' && order.payUrl;
   renderUpsell(byPhone ? t('result.upsellScan') : t('result.upsellTap'));
