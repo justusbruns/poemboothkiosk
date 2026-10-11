@@ -25,6 +25,14 @@ const CERT_PATHS = {
 // Refresh the access token this long before it expires
 const TOKEN_REFRESH_MARGIN_MS = 2 * 60 * 1000;
 
+// Capabilities of this kiosk build, sent on every request (X-Kiosk-Features).
+// The backend only enables a behaviour for booths that announce it, so booths
+// still on an older build keep working while they wait for their update.
+//   terminal-payments  pay-first flow on the booth's card terminal
+//   commands           remote restart app / reboot device / reload config
+//   realtime           listens for Supabase Realtime pokes
+const KIOSK_FEATURES = 'terminal-payments,commands,realtime';
+
 class ApiClient {
   /**
    * @param {object} [options]
@@ -754,6 +762,19 @@ class ApiClient {
     return this.request('POST', `/api/kiosk/orders/${encodeURIComponent(orderId)}/cancel`, { reason });
   }
 
+  // Remote commands (restart app / reboot device / reload config) queued by the
+  // admin for this booth. Fetching marks them delivered.
+  async getCommands() {
+    const res = await this.request('GET', '/api/kiosk/commands');
+    return Array.isArray(res && res.commands) ? res.commands : [];
+  }
+
+  async reportCommand(commandId, status, result = null) {
+    const body = { status };
+    if (result) body.result = String(result).slice(0, 500);
+    return this.request('POST', `/api/kiosk/commands/${encodeURIComponent(commandId)}`, body);
+  }
+
   // request() throws `HTTP <status>: <body>`; lift the backend's error code
   // (e.g. terminal_unavailable, no_price) onto the error for the renderer.
   orderError(error) {
@@ -897,7 +918,8 @@ class ApiClient {
 
       const headers = {
         'Content-Type': 'application/json',
-        'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`
+        'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`,
+        'X-Kiosk-Features': KIOSK_FEATURES
       };
       const authHeader = withAuth ? this.authorizationHeader() : null;
       if (authHeader) headers['Authorization'] = authHeader;
@@ -991,7 +1013,8 @@ class ApiClient {
 
     const headers = {
       'Authorization': this.authorizationHeader(),
-      'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`
+      'User-Agent': `PoemBooth-Kiosk/${this.appVersion}`,
+      'X-Kiosk-Features': KIOSK_FEATURES
     };
     if (options.accept) headers['Accept'] = options.accept;
 

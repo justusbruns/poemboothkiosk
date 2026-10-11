@@ -29,6 +29,7 @@
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
+    "@supabase/realtime-js": "^2.117.3",
     "electron-updater": "^6.1.7",
     "koffi": "^3.0.2",
     "node-machine-id": "^1.1.12",

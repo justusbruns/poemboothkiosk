@@ -102,6 +102,12 @@ All heavy services run in the **main process** to isolate privileged operations:
 - `error` {error, code} (only after the stream opened; earlier failures are plain HTTP JSON errors) · `done`
 A plain JSON response (older backend) is converted into the same events by the client. The captured frame is already rotated by the kiosk, so `photo_rotation` is not sent.
 
+**`realtimeService.js`** - Supabase Realtime "pokes" on the public topic `kiosk-<equipment_id>` (from `config.realtime`): reason `order` wakes the order poll, `config` re-fetches the config as soon as the booth is idle, `command` fetches remote commands. Pokes carry no data; polling stays as fallback.
+
+**`commandService.js`** - Remote commands queued in the admin or driver portal (`restart_app`, `reboot_device`, `reload_config`): fetched after a poke and every 60 s, executed only once the renderer reports the booth idle (max 5 min wait), result reported to `/api/kiosk/commands/{id}`. `reboot_device` uses `shutdown /r` (ignored in `--dev`).
+
+**Backward compatibility**: every request carries `X-Kiosk-Features: terminal-payments,commands,realtime`. The backend only enables those behaviours for booths that announce them, so booths on older builds keep the portal flow and never see a payment gate. Add new capabilities to `KIOSK_FEATURES` in `apiClient.js` and gate them server-side.
+
 **`credentialStore.js`** - Pairing credentials (encrypted with `safeStorage`, per environment)
 
 **`wifiService.js`** - Network management:

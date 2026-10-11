@@ -32,6 +32,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   orderStatus: (orderId) => ipcRenderer.invoke('order:status', orderId),
   orderCancel: (orderId, reason) => ipcRenderer.invoke('order:cancel', orderId, reason),
 
+  // Realtime pokes ('order' | 'config' | 'command') and remote commands
+  onPoke: (callback) => ipcRenderer.on('kiosk:poke', (event, reason) => callback(reason)),
+  onCommandRequest: (callback) => ipcRenderer.on('command:request', (event, cmd) => callback(cmd)),
+  commandReady: (commandId) => ipcRenderer.invoke('command:ready', commandId),
+
   // WiFi Service
   wifiConnect: (wifiConfig) => ipcRenderer.invoke('wifi:connect', wifiConfig),
   wifiInstallProfile: (wifiConfig) => ipcRenderer.invoke('wifi:install-profile', wifiConfig),

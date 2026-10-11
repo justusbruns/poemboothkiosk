@@ -68,6 +68,13 @@ export async function cancelOrder(orderId, reason = 'cancelled_by_kiosk') {
   }
 }
 
+// Active waitForOrder loops; a Realtime 'order' poke wakes them so the status
+// is fetched right away instead of at the next poll tick.
+const wakers = new Set();
+export function wakeOrderPolling() {
+  wakers.forEach((wake) => wake());
+}
+
 // Poll an order every `intervalMs` until it leaves 'pending', the controller
 // is aborted, or `timeoutMs` passes (→ resolves { status: 'timeout' }).
 // Transient status errors are tolerated (the timeout is the backstop).
@@ -77,10 +84,19 @@ export function waitForOrder(orderId, { intervalMs = 1000, timeoutMs = 90000, si
     let timer = null;
     let done = false;
 
+    let ticking = false;
+    const wake = () => {
+      if (done || ticking) return;
+      if (timer) clearTimeout(timer);
+      timer = null;
+      tick();
+    };
+
     const finish = (result) => {
       if (done) return;
       done = true;
       if (timer) clearTimeout(timer);
+      wakers.delete(wake);
       if (signal) signal.removeEventListener('abort', onAbort);
       resolve(result);
     };
@@ -92,6 +108,7 @@ export function waitForOrder(orderId, { intervalMs = 1000, timeoutMs = 90000, si
 
     const tick = async () => {
       if (done) return;
+      ticking = true;
       try {
         const order = await refreshOrder(orderId);
         if (done) return;
@@ -99,10 +116,14 @@ export function waitForOrder(orderId, { intervalMs = 1000, timeoutMs = 90000, si
         if (order.status !== 'pending') return finish(order);
       } catch (e) {
         console.warn('[ORDER] Status poll failed:', e.message);
+      } finally {
+        ticking = false;
       }
+      if (done) return;
       if (Date.now() - startedAt >= timeoutMs) return finish({ status: 'timeout', id: orderId });
       timer = setTimeout(tick, intervalMs);
     };
+    wakers.add(wake);
     tick();
   });
 }

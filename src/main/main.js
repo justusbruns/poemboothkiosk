@@ -90,6 +90,8 @@ const PrinterService = require('../services/printerService');
 const MockPrinterService = require('../services/mockPrinterService');
 const UpdateService = require('../services/updateService');
 const PrintJobService = require('../services/printJobService');
+const RealtimeService = require('../services/realtimeService');
+const CommandService = require('../services/commandService');
 
 // Constants
 const IS_DEV = process.argv.includes('--dev');
@@ -628,6 +630,7 @@ async function ensureApiClient() {
 
 // Start (or restart) the portal-print bridge: report printer status + poll
 // for print jobs. Safe to call repeatedly — stops any prior instance first.
+// Also starts the remote-command listener (both need working credentials).
 function startPrintJobService() {
   if (printJobService) printJobService.stop();
   printJobService = new PrintJobService({
@@ -635,6 +638,96 @@ function startPrintJobService() {
     getPrinterService: () => printerService
   });
   printJobService.start();
+  startCommandService();
+}
+
+// =============================================================================
+// Realtime pokes + remote commands
+// =============================================================================
+
+// Pokes from the backend (order / config / command changed). The renderer
+// re-fetches what changed; commands are fetched here.
+const realtimeService = new RealtimeService({
+  onPoke: (reason) => {
+    sendToRenderer('kiosk:poke', reason);
+    if (reason === 'command' && commandService) commandService.checkNow();
+  }
+});
+
+let commandService = null;
+const pendingIdleWaits = new Map(); // command id -> resolve
+
+// Resolve once the renderer reports no guest is mid-session.
+function waitForRendererIdle(cmd) {
+  return new Promise((resolve) => {
+    pendingIdleWaits.set(cmd.id, resolve);
+    sendToRenderer('command:request', { id: cmd.id, type: cmd.type });
+  });
+}
+
+ipcMain.handle('command:ready', (event, commandId) => {
+  const resolve = pendingIdleWaits.get(commandId);
+  if (resolve) {
+    pendingIdleWaits.delete(commandId);
+    resolve();
+  }
+  return true;
+});
+
+// Shut services down cleanly before the process goes away (same order as the updater)
+async function shutdownForRestart() {
+  allowQuitForUpdate = true; // let before-quit / window close through
+  realtimeService.stop();
+  if (commandService) commandService.stop();
+  if (printJobService) printJobService.stop();
+  if (hardwareService) { try { await hardwareService.destroy(); } catch (e) {} }
+  if (printerService) { try { printerService.destroy(); } catch (e) {} }
+  killChildProcesses();
+}
+
+const commandHandlers = {
+  reload_config: async () => {
+    sendToRenderer('kiosk:poke', 'config');
+    return 'config reload requested';
+  },
+
+  restart_app: async (report) => {
+    console.log('[COMMANDS] Restarting the kiosk app...');
+    await report('done', 'restarting app');
+    await shutdownForRestart();
+    app.relaunch();
+    app.exit(0);
+  },
+
+  reboot_device: async (report) => {
+    if (IS_DEV) {
+      console.log('[COMMANDS] reboot_device ignored in dev mode');
+      await report('done', 'simulated in dev mode (no reboot)');
+      return;
+    }
+    const { execFile } = require('child_process');
+    const [cmd, args] = process.platform === 'win32'
+      ? ['shutdown', ['/r', '/t', '10', '/c', 'PoemBooth remote restart']]
+      : ['systemctl', ['reboot']];
+    // Schedule the reboot first; only report success once the OS accepted it.
+    await new Promise((resolve, reject) => {
+      execFile(cmd, args, { windowsHide: true, timeout: 15000 }, (error) => (error ? reject(error) : resolve()));
+    });
+    console.log('[COMMANDS] Reboot scheduled by the OS');
+    await report('done', 'reboot scheduled');
+    await shutdownForRestart();
+    app.exit(0);
+  }
+};
+
+function startCommandService() {
+  if (commandService) commandService.stop();
+  commandService = new CommandService({
+    getApiClient: () => apiClient,
+    waitForIdle: waitForRendererIdle,
+    handlers: commandHandlers
+  });
+  commandService.start();
 }
 
 // Initialize API client
@@ -767,6 +860,10 @@ ipcMain.handle('api:get-config', async () => {
       throw new Error('API client not initialized');
     }
     kioskConfig = await apiClient.getKioskConfig();
+    // Listen for pokes on this booth's topic (no-op when unchanged / absent)
+    try { realtimeService.configure(kioskConfig && kioskConfig.realtime); } catch (e) {
+      console.warn('[MAIN] Realtime setup failed (polling continues):', e.message);
+    }
     return kioskConfig;
   } catch (error) {
     console.error('[MAIN] Config fetch error:', error);

@@ -6,6 +6,7 @@ import { setupEventListeners } from './booth/events.js';
 import { startConfigPolling } from './config.js';
 import { updateDebugInfo } from './debug.js';
 import { initLoadingLottie } from './lottie.js';
+import { setupRemoteHandlers } from './remote.js';
 import { updateResultActionLabel } from './result/ui.js';
 import { screenHardware, showScreen } from './screens.js';
 import { showLanguageScreen } from './setup/language.js';
@@ -461,6 +462,9 @@ if (window.electronAPI.onAuthInvalid) {
 window.electronAPI.onGenerateEvent((evt) => {
   if (state.generateHandler) state.generateHandler(evt);
 });
+
+// Realtime pokes (order/config changed) and remote commands - registered once.
+setupRemoteHandlers();
 
 // Knob/button for the modal setup screens (update, language) - registered once,
 // routed to whichever screen has claimed them (see claimScreenHardware).
