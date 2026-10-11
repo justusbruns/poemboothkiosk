@@ -62,8 +62,11 @@ export const it = {
     ]
   },
   result: {
+    hintCompare: "Oppure gira per confrontare i tuoi ritratti",
+    portraitN: "Ritratto {n}",
+    pickCta: "Premi per scegliere<br/>questo ritratto",
     retakeCta: "Premi per<br/>un altro stile",
-    keepCta: "Premi per tenere<br/>il tuo ritratto",
+    keepCta: "Premi per tenere<br/>questo ritratto",
     keepBadge: "Il tuo ritratto",
     scanForDigital: "Scansiona per la tua<br/>versione digitale",
     scanToSave: 'Scansiona per salvare',

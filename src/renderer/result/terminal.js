@@ -3,19 +3,21 @@ import { formatPrice, getCurrency, getExtraPrintPriceCents, getTierQuantities, i
 import { processPhoto } from '../generate.js';
 import { buildStyleCoverflow, flyOutSelectedCard, positionStyleCoverflow, startCtaRotation, stopCtaRotation, stopIdleAttract } from '../booth/coverflow.js';
 import { showScreen, updateBoothBrandVisibility } from '../screens.js';
-import { cancelOrder, createOrder, waitForOrder } from '../orders.js';
+import { cancelOrder, createOrder, refreshOrder, waitForOrder } from '../orders.js';
 import { hidePayQr, renderPayQr, showPayQrLoading } from '../payqr.js';
 import { cancelTypingAnimation } from './poem.js';
 import { handlePrint, resetPrintCircleIdle } from './print.js';
-import { cancelResultTimer, startResultTimer } from './qr.js';
+import { cancelResultTimer, showQRCode, startResultTimer } from './qr.js';
+import { showResultCameraBackground } from './ui.js';
 import { elements, state } from '../state.js';
 
 // =============================================================================
 // Result screen in the pay-first (terminal) flow — phases 5 and 6
 // -----------------------------------------------------------------------------
 //  reveal   : portrait is on screen. Button = print the paid copies.
-//             Knob (while a free retake is left) = pick another style → retake.
-//  retake   : style picker panel open. Knob cycles styles, button regenerates.
+//             Knob = the start screen's row with the portraits made so far
+//             and (while a free retake is left) the styles.
+//  retake   : choosing in that row (see "Retake / compare portraits").
 //  printing : the paid copies are being printed.
 //  printed  : prints done; QR for the download. Knob = add prints (upsell).
 //  upsell   : extra-print panel open. Knob picks the amount, the terminal
@@ -88,8 +90,9 @@ function canUpsell() {
 }
 
 // Called by showQRCode() once the render is in (terminal mode only)
-export function enterTerminalResult() {
+export function enterTerminalResult(publicViewUrl) {
   if (!isTerminalPayMode() || !state.order) return;
+  recordPortrait(publicViewUrl);
   hidePanel();
   upsell = null;
   state.terminalBusy = false;
@@ -97,15 +100,23 @@ export function enterTerminalResult() {
   state.printsRemaining = state.order.quantity;
   if (elements.printLabel) elements.printLabel.textContent = t('result.pressToPrint');
 
-  setPhase('reveal');
-  showCircles({ qr: false, print: true });
-  setHint(state.order.generationsLeft > 0 ? t('result.hintRetake') : '');
-  startResultTimer(REVEAL_TIMEOUT_MS);
+  backToReveal();
+
+  // The backend knows how many generations this order has left (the first
+  // portrait counts too): ask, so the screen never offers a retake that the
+  // backend would refuse.
+  const orderId = state.order.id;
+  refreshOrder(orderId).then((o) => {
+    if (!state.order || state.order.id !== orderId) return;
+    state.order.generationsLeft = o.generationsLeft;
+    if (state.resultPhase === 'reveal') setHint(revealHint());
+  }).catch((e) => console.warn('[TERMINAL] Order refresh failed:', e.message));
 }
 
 // Runs after the wipe back to the booth
 export function leaveTerminalResult() {
   if (retakeSaved) restoreNormalCoverflow();
+  state.resultHistory = [];
   // Restore the shared result layout for the next guest (and other modes)
   const qrBox = document.getElementById('qr-circle')?.closest('.circle-container');
   if (qrBox) qrBox.style.display = '';
@@ -158,15 +169,19 @@ async function printAllPaid() {
 }
 
 // ---------------------------------------------------------------------------
-// Retake (one free regeneration with another style)
+// Retake / compare portraits (start screen coverflow)
 // ---------------------------------------------------------------------------
 
-// Free retake: the start screen with its style coverflow, but with the guest's
-// own photo instead of the live camera and a "free retake" banner. Turning the
-// knob picks a style exactly like on the start screen; the button makes the
-// portrait again with the same photo. No input for a while → back to the result.
+// Turning the knob on the result opens the start screen's style row with the
+// guest's own photo as background. In front of the styles sit the portraits
+// already made with this order ("Your portrait", or "Portrait 1 / 2" after a
+// retake); the one on screen is selected, so an accidental turn never loses
+// it. Pick a portrait → back to that result (an earlier one gets the prints);
+// pick a style (only while a free retake is left) → regenerate with the same
+// photo. No input for a while → back to the result.
 const RETAKE_IDLE_MS = 25000;
 let retakeTimer = null;
+let retakeSaved = null; // { styles, index } of the normal coverflow
 
 function armRetakeTimeout() {
   if (retakeTimer) clearTimeout(retakeTimer);
@@ -176,31 +191,76 @@ function armRetakeTimeout() {
   }, RETAKE_IDLE_MS);
 }
 
-// The retake row = the normal style cards plus one extra card in front: the
-// portrait the guest already has ("Your portrait · keep"). The screen opens on
-// that card, so an accidental turn never loses the portrait: pressing on it
-// simply goes back to the result.
-let retakeSaved = null; // { styles, index } of the normal coverflow
+function selectedEntry() {
+  return state.availableStyles[state.currentStyleIndex] || null;
+}
 
-function isKeepSelected() {
-  const s = state.availableStyles[state.currentStyleIndex];
-  return !!(s && s.__keep);
+function isPortraitSelected() {
+  const s = selectedEntry();
+  return !!(s && s.__portrait);
+}
+
+function canRetakeStyle() {
+  return !!(state.order && state.order.generationsLeft > 0);
+}
+
+function portraits() {
+  return state.resultHistory || [];
+}
+
+function canOpenRetake() {
+  return canRetakeStyle() || portraits().length > 1;
+}
+
+function revealHint() {
+  if (canRetakeStyle()) return t('result.hintRetake');
+  if (portraits().length > 1) return t('result.hintCompare');
+  return '';
+}
+
+// Remember the portrait on screen (one entry per session)
+function recordPortrait(publicViewUrl) {
+  const id = state.currentSession && state.currentSession.id;
+  if (!id) return;
+  const snap = {
+    sessionId: id,
+    image: state.lastResultImage || null,
+    printUrl: state.currentPrintUrl || null,
+    printBuffer: state.currentPrintBuffer || null,
+    format: state.currentPrintFormat,
+    orientation: state.currentPrintOrientation,
+    publicViewUrl: publicViewUrl || null
+  };
+  const list = portraits().slice();
+  const at = list.findIndex((p) => p.sessionId === id);
+  if (at >= 0) list[at] = { ...list[at], ...snap, publicViewUrl: snap.publicViewUrl || list[at].publicViewUrl };
+  else list.push(snap);
+  state.resultHistory = list;
 }
 
 function updateRetakeCta() {
   if (!elements.actionButtonText) return;
-  elements.actionButtonText.innerHTML = isKeepSelected() ? t('result.keepCta') : t('result.retakeCta');
+  const s = selectedEntry();
+  let text = t('result.retakeCta');
+  if (s && s.__portrait) {
+    const onScreen = state.currentSession && s.__portrait.sessionId === state.currentSession.id;
+    text = onScreen ? t('result.keepCta') : t('result.pickCta');
+  }
+  elements.actionButtonText.innerHTML = text;
   elements.actionButtonText.style.opacity = '1';
 }
 
-function markKeepCard(index) {
-  const card = document.getElementById('style-coverflow')?.children[index];
-  if (!card) return;
-  card.classList.add('style-card-keep');
-  const badge = document.createElement('span');
-  badge.className = 'keep-badge';
-  badge.textContent = t('result.keepBadge');
-  card.appendChild(badge);
+function markPortraitCards(count) {
+  const cards = document.getElementById('style-coverflow')?.children || [];
+  for (let i = 0; i < count && i < cards.length; i++) {
+    cards[i].classList.add('style-card-keep');
+    const badge = document.createElement('span');
+    badge.className = 'keep-badge';
+    badge.textContent = count > 1
+      ? t('result.portraitN').replace('{n}', String(i + 1))
+      : t('result.keepBadge');
+    cards[i].appendChild(badge);
+  }
 }
 
 function setRetakeChrome(on) {
@@ -209,7 +269,7 @@ function setRetakeChrome(on) {
     photo.src = on ? (state.currentPhoto || '') : '';
     photo.style.display = on ? 'block' : 'none';
   }
-  // The retake is free: no price on the start screen
+  // Nothing to pay here: no price on the start screen
   if (elements.priceBadge) elements.priceBadge.style.visibility = on ? 'hidden' : '';
 }
 
@@ -223,27 +283,63 @@ function restoreNormalCoverflow(selectedStyle = null) {
   buildStyleCoverflow();
 }
 
+// Where the portrait sits on the result screen right now (for the fly-in)
+function resultImageRect() {
+  const img = document.querySelector('#poem-text .result-image-wrap img');
+  const el = img || elements.poemText;
+  if (!el) return null;
+  const r = el.getBoundingClientRect();
+  return r.width > 10 && r.height > 10 ? r : null;
+}
+
+// The portrait shrinks from the result screen into its card in the row
+function flyIntoCard(fromRect, card, src) {
+  if (!fromRect || !card || !src) return;
+  const target = card.getBoundingClientRect();
+  if (!target.width) return;
+  const ghost = document.createElement('img');
+  ghost.src = src;
+  ghost.className = 'portrait-fly';
+  Object.assign(ghost.style, {
+    left: fromRect.left + 'px', top: fromRect.top + 'px',
+    width: fromRect.width + 'px', height: fromRect.height + 'px'
+  });
+  document.body.appendChild(ghost);
+  card.style.visibility = 'hidden';
+  const dx = target.left - fromRect.left;
+  const dy = target.top - fromRect.top;
+  const sx = target.width / fromRect.width;
+  const sy = target.height / fromRect.height;
+  const anim = ghost.animate([
+    { transform: 'translate(0, 0) scale(1, 1)', borderRadius: '8px', opacity: 1 },
+    { transform: `translate(${dx}px, ${dy}px) scale(${sx}, ${sy})`, borderRadius: '14px', opacity: 1 }
+  ], { duration: 650, easing: 'cubic-bezier(0.22, 1, 0.36, 1)', fill: 'forwards' });
+  const done = () => { card.style.visibility = ''; ghost.remove(); };
+  anim.onfinish = done;
+  setTimeout(done, 1200); // safety net
+}
+
 function openRetake() {
   setPhase('retake');
   cancelResultTimer();
   hidePanel();
+  const fromRect = resultImageRect();
   state.retakeMode = true;
 
-  // Insert the "keep" card at the current style's place and select it
+  // Portraits first (oldest → newest), then the styles while a retake is left
   retakeSaved = { styles: state.availableStyles, index: state.currentStyleIndex };
-  const keep = {
-    id: '__keep__',
-    __keep: true,
+  const portraitCards = portraits().map((p, i) => ({
+    id: '__portrait_' + i,
+    __portrait: p,
     name: t('result.keepBadge'),
-    example_output_image_url: state.lastResultImage || null
-  };
-  const list = state.availableStyles.slice();
-  const at = Math.min(Math.max(state.currentStyleIndex, 0), list.length);
-  list.splice(at, 0, keep);
+    example_output_image_url: p.image || null
+  }));
+  const list = canRetakeStyle() ? portraitCards.concat(retakeSaved.styles) : portraitCards;
+  const onScreen = portraits().findIndex((p) => state.currentSession && p.sessionId === state.currentSession.id);
   state.availableStyles = list;
-  state.currentStyleIndex = at;
+  state.currentStyleIndex = onScreen >= 0 ? onScreen : Math.max(0, portraitCards.length - 1);
   buildStyleCoverflow();
-  markKeepCard(at);
+  markPortraitCards(portraitCards.length);
 
   showScreen('booth');
   stopIdleAttract(); // no auto-turning while the guest chooses
@@ -252,9 +348,14 @@ function openRetake() {
   setRetakeChrome(true);
   updateRetakeCta();
   armRetakeTimeout();
+
+  // Let the row settle, then fly the portrait into its card
+  const card = document.getElementById('style-coverflow')?.children[state.currentStyleIndex];
+  const src = state.lastResultImage;
+  requestAnimationFrame(() => requestAnimationFrame(() => flyIntoCard(fromRect, card, src)));
 }
 
-// Knob on the start screen while choosing a retake style
+// Knob on the start screen while choosing
 export function onRetakeKnob() {
   if (!state.retakeMode) return;
   stopIdleAttract();
@@ -262,35 +363,92 @@ export function onRetakeKnob() {
   armRetakeTimeout();
 }
 
-function closeRetake() {
+function leaveRetakeChrome() {
   if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
   state.retakeMode = false;
   setRetakeChrome(false);
-  restoreNormalCoverflow();
-  startCtaRotation();
-  showScreen('result');
+}
+
+function backToReveal() {
   setPhase('reveal');
   showCircles({ qr: false, print: true });
-  setHint(state.order && state.order.generationsLeft > 0 ? t('result.hintRetake') : '');
+  setHint(revealHint());
   startResultTimer(REVEAL_TIMEOUT_MS);
 }
 
-// Button on the start screen while choosing a retake style
+function closeRetake() {
+  leaveRetakeChrome();
+  restoreNormalCoverflow();
+  startCtaRotation();
+  showScreen('result');
+  backToReveal();
+}
+
+// Put an earlier portrait back on the result screen (as its image)
+function showPortraitResult(p) {
+  state.currentSession = { id: p.sessionId };
+  state.currentPrintUrl = p.printUrl;
+  state.currentPrintBuffer = p.printBuffer;
+  if (p.format) state.currentPrintFormat = p.format;
+  if (p.orientation) state.currentPrintOrientation = p.orientation;
+  state.lastResultImage = p.image;
+
+  cancelTypingAnimation();
+  if (elements.resultPhoto) { elements.resultPhoto.src = ''; elements.resultPhoto.style.display = 'none'; }
+  showResultCameraBackground();
+  const overlay = elements.poemText && elements.poemText.parentElement;
+  if (overlay) overlay.classList.add('image-display');
+  if (elements.poemText) {
+    elements.poemText.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'result-image-wrap';
+    const img = document.createElement('img');
+    img.src = p.image || '';
+    img.alt = '';
+    wrap.appendChild(img);
+    if (elements.resultWatermark) wrap.appendChild(elements.resultWatermark);
+    elements.poemText.appendChild(wrap);
+    elements.poemText.classList.add('typing-complete');
+  }
+  showScreen('result');
+  if (p.publicViewUrl) {
+    showQRCode(p.publicViewUrl); // redraws the QR and re-enters the reveal phase
+  } else {
+    backToReveal();
+  }
+}
+
+// Button on the start screen while choosing
 export async function confirmRetakeFromBooth() {
   if (!state.retakeMode || !state.order) return;
-  // "Keep my portrait" card: back to the result, nothing is regenerated
-  if (isKeepSelected()) {
-    console.log('[TERMINAL] Retake: guest keeps the first portrait');
-    return closeRetake();
+  const sel = selectedEntry();
+
+  if (sel && sel.__portrait) {
+    const p = sel.__portrait;
+    const onScreen = state.currentSession && p.sessionId === state.currentSession.id;
+    leaveRetakeChrome();
+    restoreNormalCoverflow();
+    startCtaRotation();
+    if (onScreen) {
+      console.log('[TERMINAL] Guest keeps the portrait on screen');
+      showScreen('result');
+      return backToReveal();
+    }
+    console.log('[TERMINAL] Guest picks an earlier portrait', p.sessionId);
+    // The paid prints move to this portrait
+    window.electronAPI.orderSelectSession(state.order.id, p.sessionId)
+      .then((res) => { if (res && res.error) console.warn('[TERMINAL] select-session failed:', res.error); })
+      .catch((e) => console.warn('[TERMINAL] select-session failed:', e.message));
+    return showPortraitResult(p);
   }
-  if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
-  state.retakeMode = false;
-  const chosen = state.availableStyles[state.currentStyleIndex];
+
+  if (!canRetakeStyle()) return; // only portraits to choose from
+  leaveRetakeChrome();
+  const chosen = sel;
   state.isCapturing = true;
   updateBoothBrandVisibility();
   console.log('[TERMINAL] Free retake with style', currentStyleName());
   await flyOutSelectedCard(); // same send-off as a normal capture
-  setRetakeChrome(false);
   // Back to the real style list, with the chosen style selected for the generation
   restoreNormalCoverflow(chosen);
   startCtaRotation();
@@ -450,7 +608,7 @@ export function handleTerminalResultButton() {
 export function handleTerminalResultKnob(direction) {
   switch (state.resultPhase) {
     case 'reveal':
-      if (state.order && state.order.generationsLeft > 0) openRetake();
+      if (state.order && canOpenRetake()) openRetake();
       return;
     case 'retake':
       return; // handled by the start screen's coverflow (see onRetakeKnob)

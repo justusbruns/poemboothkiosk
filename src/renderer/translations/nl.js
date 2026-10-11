@@ -90,8 +90,11 @@ export const nl = {
     ]
   },
   result: {
+    hintCompare: "Of draai om je portretten te vergelijken",
+    portraitN: "Portret {n}",
+    pickCta: "Druk om dit<br/>portret te kiezen",
     retakeCta: "Druk voor een<br/>andere stijl",
-    keepCta: "Druk om je<br/>portret te houden",
+    keepCta: "Druk om dit<br/>portret te houden",
     keepBadge: "Jouw portret",
     scanForDigital: "Scan voor je<br/>digitale versie",
     scanToSave: 'Scannen om op te slaan',

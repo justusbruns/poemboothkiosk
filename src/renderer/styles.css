@@ -1115,6 +1115,16 @@ h1, h2, h3, h4, h5, h6, p {
 .paywall-status.error { color: #ff6b6b; }
 .paywall-status.ok { color: #4ade80; }
 
+/* Portrait flying from the result screen into its card in the row */
+.portrait-fly {
+  position: fixed;
+  z-index: 9999;
+  object-fit: cover;
+  transform-origin: 0 0;
+  pointer-events: none;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
 /* Retake row: the portrait the guest already has, clearly marked */
 .style-card.style-card-keep {
   outline: 4px solid #4ade80;

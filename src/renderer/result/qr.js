@@ -99,7 +99,7 @@ export function showQRCode(publicViewUrl) {
 
   if (isTerminalPayMode() && state.order) {
     // Pay-first: print/retake/upsell phases drive the timer from here on
-    enterTerminalResult();
+    enterTerminalResult(publicViewUrl);
     return;
   }
 

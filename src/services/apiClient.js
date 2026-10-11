@@ -770,6 +770,11 @@ class ApiClient {
     return this.request('POST', `/api/kiosk/orders/${encodeURIComponent(orderId)}/refund`, { reason });
   }
 
+  // The guest picked an earlier portrait of this order: its prints move there
+  async selectOrderSession(orderId, sessionId) {
+    return this.request('POST', `/api/kiosk/orders/${encodeURIComponent(orderId)}/select-session`, { session_id: sessionId });
+  }
+
   async cancelOrder(orderId, reason = 'cancelled_by_kiosk') {
     return this.request('POST', `/api/kiosk/orders/${encodeURIComponent(orderId)}/cancel`, { reason });
   }

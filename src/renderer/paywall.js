@@ -109,6 +109,7 @@ export async function startPaywall() {
 
   session = { quantity: quantities[0], qtyTimer: null, abort: null, retries: 0, done: false };
   state.order = null;
+  state.resultHistory = [];
 
   applyText();
   renderPrice(session.quantity);

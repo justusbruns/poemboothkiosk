@@ -62,8 +62,11 @@ export const es = {
     ]
   },
   result: {
+    hintCompare: "O gira para comparar tus retratos",
+    portraitN: "Retrato {n}",
+    pickCta: "Pulsa para elegir<br/>este retrato",
     retakeCta: "Pulsa para<br/>otro estilo",
-    keepCta: "Pulsa para quedarte<br/>con tu retrato",
+    keepCta: "Pulsa para quedarte<br/>con este retrato",
     keepBadge: "Tu retrato",
     scanForDigital: "Escanea para tu<br/>versión digital",
     scanToSave: 'Escanear para guardar',

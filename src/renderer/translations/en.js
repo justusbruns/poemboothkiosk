@@ -90,8 +90,11 @@ export const en = {
     ]
   },
   result: {
+    hintCompare: "Or turn to compare your portraits",
+    portraitN: "Portrait {n}",
+    pickCta: "Press to choose<br/>this portrait",
     retakeCta: "Press for<br/>another style",
-    keepCta: "Press to keep<br/>your portrait",
+    keepCta: "Press to keep<br/>this portrait",
     keepBadge: "Your portrait",
     scanForDigital: "Scan for your<br/>digital copy",
     scanToSave: 'Scan to save',

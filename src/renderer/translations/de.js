@@ -62,8 +62,11 @@ export const de = {
     ]
   },
   result: {
+    hintCompare: "Oder drehen, um deine Porträts zu vergleichen",
+    portraitN: "Porträt {n}",
+    pickCta: "Drücken, um dieses<br/>Porträt zu wählen",
     retakeCta: "Drücken für einen<br/>anderen Stil",
-    keepCta: "Drücken, um dein<br/>Porträt zu behalten",
+    keepCta: "Drücken, um dieses<br/>Porträt zu behalten",
     keepBadge: "Dein Porträt",
     scanForDigital: "Scannen für deine<br/>digitale Version",
     scanToSave: 'Scannen zum Speichern',

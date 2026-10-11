@@ -1032,6 +1032,17 @@ ipcMain.handle('order:status', async (event, orderId) => {
   }
 });
 
+ipcMain.handle('order:select-session', async (event, orderId, sessionId) => {
+  if (USE_MOCK_TERMINAL) return { order_id: orderId, session_id: sessionId };
+  if (!apiClient) throw new Error('API client not initialized');
+  try {
+    return await apiClient.selectOrderSession(orderId, sessionId);
+  } catch (error) {
+    console.error('[MAIN] Order select-session error:', error.message);
+    return { error: 'select_failed', message: error.message };
+  }
+});
+
 ipcMain.handle('order:refund', async (event, orderId, reason) => {
   if (USE_MOCK_TERMINAL) {
     const o = mockOrders.get(orderId);
