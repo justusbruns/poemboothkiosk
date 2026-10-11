@@ -62,6 +62,9 @@ export const it = {
     ]
   },
   result: {
+    retakeCta: "Premi per<br/>un altro stile",
+    keepCta: "Premi per tenere<br/>il tuo ritratto",
+    keepBadge: "Il tuo ritratto",
     scanForDigital: "Scansiona per la tua<br/>versione digitale",
     scanToSave: 'Scansiona per salvare',
     scanToPrintAndSave: 'Scansiona per Salvare<br/>e Stampare',

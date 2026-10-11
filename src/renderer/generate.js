@@ -255,6 +255,7 @@ export function handleGenerateEvent(evt) {
     case 'render':
       g.render = evt;
       state.currentPrintUrl = evt.print_image_url || evt.rendered_image_url || null;
+      state.lastResultImage = evt.rendered_image_url || evt.print_image_url || null; // retake "keep" card
       state.currentPrintFormat = evt.print_format || state.currentPrintFormat || '4x6';
       state.currentPrintOrientation = evt.print_orientation || state.currentPrintOrientation || 'portrait';
       state.isProcessing = false;
@@ -442,6 +443,7 @@ export async function processImageGeneration(response) {
 
     // Store for printing (print directly, no re-rendering)
     state.currentPrintBuffer = imageBuffer;
+    state.lastResultImage = imageDataUrl; // retake "keep" card
 
     // Destroy loading animation
     destroyLottieAnimation();

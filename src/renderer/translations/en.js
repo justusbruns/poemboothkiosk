@@ -90,6 +90,9 @@ export const en = {
     ]
   },
   result: {
+    retakeCta: "Press for<br/>another style",
+    keepCta: "Press to keep<br/>your portrait",
+    keepBadge: "Your portrait",
     scanForDigital: "Scan for your<br/>digital copy",
     scanToSave: 'Scan to save',
     scanToPrintAndSave: 'Scan to Save<br/>& Print',

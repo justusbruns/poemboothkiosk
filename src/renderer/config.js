@@ -32,7 +32,9 @@ export function startConfigPolling() {
 export async function checkForConfigUpdates() {
   try {
     // Only check when idle (on booth screen, not processing)
-    if (state.screen !== 'booth' || state.isProcessing) {
+    // (also not while a guest picks a retake style or takes a paid new photo:
+    // rebuilding the style row would drop the 'keep your portrait' card)
+    if (state.screen !== 'booth' || state.isProcessing || state.retakeMode || state.prepaidRetake) {
       console.log('[CONFIG] Skipping config check - screen:', state.screen, 'processing:', state.isProcessing);
       return;
     }

@@ -34,7 +34,7 @@ function scheduleConfigCheck() {
   configWaitingSince = configWaitingSince || Date.now();
   const attempt = () => {
     configTimer = null;
-    const idleOnBooth = state.screen === 'booth' && !state.isProcessing;
+    const idleOnBooth = state.screen === 'booth' && !state.isProcessing && !state.retakeMode && !state.prepaidRetake;
     if (idleOnBooth) {
       configWaitingSince = 0;
       checkForConfigUpdates();

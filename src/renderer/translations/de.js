@@ -62,6 +62,9 @@ export const de = {
     ]
   },
   result: {
+    retakeCta: "Drücken für einen<br/>anderen Stil",
+    keepCta: "Drücken, um dein<br/>Porträt zu behalten",
+    keepBadge: "Dein Porträt",
     scanForDigital: "Scannen für deine<br/>digitale Version",
     scanToSave: 'Scannen zum Speichern',
     scanToPrintAndSave: 'Scannen zum Speichern<br/>& Drucken',

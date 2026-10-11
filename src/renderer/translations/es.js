@@ -62,6 +62,9 @@ export const es = {
     ]
   },
   result: {
+    retakeCta: "Pulsa para<br/>otro estilo",
+    keepCta: "Pulsa para quedarte<br/>con tu retrato",
+    keepBadge: "Tu retrato",
     scanForDigital: "Escanea para tu<br/>versión digital",
     scanToSave: 'Escanear para guardar',
     scanToPrintAndSave: 'Escanea para Guardar<br/>e Imprimir',

@@ -90,6 +90,9 @@ export const nl = {
     ]
   },
   result: {
+    retakeCta: "Druk voor een<br/>andere stijl",
+    keepCta: "Druk om je<br/>portret te houden",
+    keepBadge: "Jouw portret",
     scanForDigital: "Scan voor je<br/>digitale versie",
     scanToSave: 'Scannen om op te slaan',
     scanToPrintAndSave: 'Scan om te Bewaren<br/>& Printen',

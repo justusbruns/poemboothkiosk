@@ -1,7 +1,7 @@
 import { t } from '../translations/index.js';
 import { formatPrice, getCurrency, getExtraPrintPriceCents, getTierQuantities, isTerminalPayMode } from '../booth/badges.js';
 import { processPhoto } from '../generate.js';
-import { flyOutSelectedCard, handleStyleChange, stopIdleAttract } from '../booth/coverflow.js';
+import { buildStyleCoverflow, flyOutSelectedCard, positionStyleCoverflow, startCtaRotation, stopCtaRotation, stopIdleAttract } from '../booth/coverflow.js';
 import { showScreen, updateBoothBrandVisibility } from '../screens.js';
 import { cancelOrder, createOrder, waitForOrder } from '../orders.js';
 import { hidePayQr, renderPayQr, showPayQrLoading } from '../payqr.js';
@@ -105,6 +105,7 @@ export function enterTerminalResult() {
 
 // Runs after the wipe back to the booth
 export function leaveTerminalResult() {
+  if (retakeSaved) restoreNormalCoverflow();
   // Restore the shared result layout for the next guest (and other modes)
   const qrBox = document.getElementById('qr-circle')?.closest('.circle-container');
   if (qrBox) qrBox.style.display = '';
@@ -175,33 +176,81 @@ function armRetakeTimeout() {
   }, RETAKE_IDLE_MS);
 }
 
+// The retake row = the normal style cards plus one extra card in front: the
+// portrait the guest already has ("Your portrait · keep"). The screen opens on
+// that card, so an accidental turn never loses the portrait: pressing on it
+// simply goes back to the result.
+let retakeSaved = null; // { styles, index } of the normal coverflow
+
+function isKeepSelected() {
+  const s = state.availableStyles[state.currentStyleIndex];
+  return !!(s && s.__keep);
+}
+
+function updateRetakeCta() {
+  if (!elements.actionButtonText) return;
+  elements.actionButtonText.innerHTML = isKeepSelected() ? t('result.keepCta') : t('result.retakeCta');
+  elements.actionButtonText.style.opacity = '1';
+}
+
+function markKeepCard(index) {
+  const card = document.getElementById('style-coverflow')?.children[index];
+  if (!card) return;
+  card.classList.add('style-card-keep');
+  const badge = document.createElement('span');
+  badge.className = 'keep-badge';
+  badge.textContent = t('result.keepBadge');
+  card.appendChild(badge);
+}
+
 function setRetakeChrome(on) {
   const photo = document.getElementById('retake-photo');
   if (photo) {
     photo.src = on ? (state.currentPhoto || '') : '';
     photo.style.display = on ? 'block' : 'none';
   }
-  if (elements.prepaidBanner) {
-    if (on) {
-      elements.prepaidTitle.textContent = t('result.retakeTitle');
-      elements.prepaidBody.textContent = t('result.retakeBody');
-      elements.prepaidCta.textContent = t('result.retakeSub');
-    }
-    elements.prepaidBanner.style.display = on ? 'block' : 'none';
-  }
   // The retake is free: no price on the start screen
   if (elements.priceBadge) elements.priceBadge.style.visibility = on ? 'hidden' : '';
 }
 
-function openRetake(direction) {
+function restoreNormalCoverflow(selectedStyle = null) {
+  if (!retakeSaved) return;
+  const { styles, index } = retakeSaved;
+  retakeSaved = null;
+  state.availableStyles = styles;
+  const found = selectedStyle ? styles.indexOf(selectedStyle) : -1;
+  state.currentStyleIndex = found >= 0 ? found : index;
+  buildStyleCoverflow();
+}
+
+function openRetake() {
   setPhase('retake');
   cancelResultTimer();
   hidePanel();
   state.retakeMode = true;
+
+  // Insert the "keep" card at the current style's place and select it
+  retakeSaved = { styles: state.availableStyles, index: state.currentStyleIndex };
+  const keep = {
+    id: '__keep__',
+    __keep: true,
+    name: t('result.keepBadge'),
+    example_output_image_url: state.lastResultImage || null
+  };
+  const list = state.availableStyles.slice();
+  const at = Math.min(Math.max(state.currentStyleIndex, 0), list.length);
+  list.splice(at, 0, keep);
+  state.availableStyles = list;
+  state.currentStyleIndex = at;
+  buildStyleCoverflow();
+  markKeepCard(at);
+
   showScreen('booth');
   stopIdleAttract(); // no auto-turning while the guest chooses
+  stopCtaRotation();
+  positionStyleCoverflow();
   setRetakeChrome(true);
-  handleStyleChange(direction === 'clockwise' ? 'clockwise' : 'counterclockwise');
+  updateRetakeCta();
   armRetakeTimeout();
 }
 
@@ -209,6 +258,7 @@ function openRetake(direction) {
 export function onRetakeKnob() {
   if (!state.retakeMode) return;
   stopIdleAttract();
+  updateRetakeCta();
   armRetakeTimeout();
 }
 
@@ -216,6 +266,8 @@ function closeRetake() {
   if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
   state.retakeMode = false;
   setRetakeChrome(false);
+  restoreNormalCoverflow();
+  startCtaRotation();
   showScreen('result');
   setPhase('reveal');
   showCircles({ qr: false, print: true });
@@ -226,13 +278,22 @@ function closeRetake() {
 // Button on the start screen while choosing a retake style
 export async function confirmRetakeFromBooth() {
   if (!state.retakeMode || !state.order) return;
+  // "Keep my portrait" card: back to the result, nothing is regenerated
+  if (isKeepSelected()) {
+    console.log('[TERMINAL] Retake: guest keeps the first portrait');
+    return closeRetake();
+  }
   if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
   state.retakeMode = false;
+  const chosen = state.availableStyles[state.currentStyleIndex];
   state.isCapturing = true;
   updateBoothBrandVisibility();
   console.log('[TERMINAL] Free retake with style', currentStyleName());
   await flyOutSelectedCard(); // same send-off as a normal capture
   setRetakeChrome(false);
+  // Back to the real style list, with the chosen style selected for the generation
+  restoreNormalCoverflow(chosen);
+  startCtaRotation();
   cancelTypingAnimation();
   setHint('');
   state.order.generationsLeft = Math.max(0, state.order.generationsLeft - 1);
@@ -389,7 +450,7 @@ export function handleTerminalResultButton() {
 export function handleTerminalResultKnob(direction) {
   switch (state.resultPhase) {
     case 'reveal':
-      if (state.order && state.order.generationsLeft > 0) openRetake(direction);
+      if (state.order && state.order.generationsLeft > 0) openRetake();
       return;
     case 'retake':
       return; // handled by the start screen's coverflow (see onRetakeKnob)
