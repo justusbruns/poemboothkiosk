@@ -37,11 +37,19 @@ function toState(view) {
 
 // Create an order and make it the current one. Throws OrderError with
 // code 'terminal_unavailable' when the booth has no working terminal.
+function currentStyleId() {
+  const style = state.availableStyles && state.availableStyles[state.currentStyleIndex];
+  const id = style && style.id;
+  return typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
 export async function createOrder(kind, quantity, sessionId = null) {
   // The backend falls back to a Mollie QR when the booth's terminal is unavailable
   const view = await window.electronAPI.orderCreate(kind, quantity, sessionId, {
     allowMollieFallback: true,
-    locale: getCurrentLanguage() || 'nl'
+    locale: getCurrentLanguage() || 'nl',
+    // The style on screen when the guest pays (conversion per style in the portal)
+    styleId: kind === 'generation' ? currentStyleId() : null
   });
   if (!view || view.error) {
     throw new OrderError((view && view.error) || 'order_failed', view && view.message, view && view.status);

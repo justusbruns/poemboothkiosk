@@ -753,6 +753,7 @@ class ApiClient {
     if (sessionId) body.session_id = sessionId;
     if (opts.allowMollieFallback) body.allow_mollie_fallback = true;
     if (opts.locale) body.locale = String(opts.locale).slice(0, 5);
+    if (opts.styleId) body.style_id = String(opts.styleId);
     try {
       return await this.request('POST', '/api/kiosk/orders', body);
     } catch (error) {
