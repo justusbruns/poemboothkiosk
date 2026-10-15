@@ -10,6 +10,7 @@ import { handlePrint, resetPrintCircleIdle } from './print.js';
 import { cancelResultTimer, showQRCode, startResultTimer } from './qr.js';
 import { showResultCameraBackground } from './ui.js';
 import { elements, state } from '../state.js';
+import { setLedPhase } from '../leds.js';
 
 // =============================================================================
 // Result screen in the pay-first (terminal) flow — phases 5 and 6
@@ -161,6 +162,7 @@ async function printAllPaid() {
 
   if (state.screen !== 'result') return;
   setPhase('printed');
+  setLedPhase('reveal');
   resetPrintCircleIdle();
   if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanForDigital');
   showCircles({ qr: true, print: false });

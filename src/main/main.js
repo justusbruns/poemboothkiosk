@@ -91,6 +91,7 @@ const MockPrinterService = require('../services/mockPrinterService');
 const UpdateService = require('../services/updateService');
 const PrintJobService = require('../services/printJobService');
 const RealtimeService = require('../services/realtimeService');
+const LedService = require('../services/ledService');
 const CommandService = require('../services/commandService');
 
 // Constants
@@ -110,6 +111,9 @@ const USE_MOCK_PRINTER = process.argv.includes('--mock-printer') ||
 // terminal or a terminal-mode booking. --mock-terminal=fail → declined cards.
 const MOCK_TERMINAL_ARG = process.argv.find(a => a.startsWith('--mock-terminal'));
 const USE_MOCK_TERMINAL = !!MOCK_TERMINAL_ARG;
+// Booth LEDs (WLED on USB, any port): --no-leds turns them off, --led-port=COM7 skips the scan
+const NO_LEDS = process.argv.includes('--no-leds');
+const LED_PORT = (process.argv.find(a => a.startsWith('--led-port=')) || '').split('=')[1] || null;
 const MOCK_TERMINAL_OUTCOME = (MOCK_TERMINAL_ARG && MOCK_TERMINAL_ARG.split('=')[1]) || 'paid';
 let mainWindow;
 let rendererCrashTimes = [];
@@ -254,6 +258,7 @@ async function createWindow() {
 
   // Initialize hardware service (non-blocking)
   initializeHardware();
+  initializeLeds();
 
   // Initialize the printer in the background. Awaiting it here used to keep the
   // window black for ~12 s on a real booth (PowerShell worker + DNP supply read);
@@ -502,8 +507,27 @@ async function initializePrinter() {
   }
 }
 
+// Booth LEDs: found on any USB port, picked up again after re-plugging.
+// The renderer reports the step of the guest flow (ledPhases.js).
+let ledService = null;
+function initializeLeds() {
+  if (ledService || NO_LEDS) return;
+  try {
+    ledService = new LedService({ portPath: LED_PORT });
+    ledService.start();
+  } catch (e) {
+    console.error('[MAIN] LED service could not start:', e.message);
+    ledService = null;
+  }
+}
+ipcMain.on('led:phase', (event, phase) => {
+  if (ledService) ledService.setPhase(String(phase));
+});
+ipcMain.handle('led:status', () => (ledService ? ledService.status() : { connected: false, disabled: NO_LEDS }));
+
 // Cleanup hardware and printer on quit
 app.on('will-quit', async () => {
+  if (ledService) ledService.stop();
   if (printJobService) {
     printJobService.stop();
   }
@@ -678,6 +702,7 @@ ipcMain.handle('command:ready', (event, commandId) => {
 async function shutdownForRestart() {
   allowQuitForUpdate = true; // let before-quit / window close through
   realtimeService.stop();
+  if (ledService) ledService.stop();
   if (commandService) commandService.stop();
   if (printJobService) printJobService.stop();
   if (hardwareService) { try { await hardwareService.destroy(); } catch (e) {} }

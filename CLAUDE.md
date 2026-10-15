@@ -48,6 +48,7 @@ These flags can be combined with `electron .`:
 - `--real-printer` — Force real printer in dev mode
 - `--force-wifi` — Force WiFi setup screen
 - `--force-pair` — Show the device pairing screen even if credentials are stored (re-pair this booth)
+- `--no-leds` — Do not look for a WLED LED controller on USB; `--led-port=COM7` uses that port instead of scanning all of them
 - `--mock-terminal` — Force the pay-first card-terminal flow with locally settled orders (paid after 3 s); `--mock-terminal=fail` declines, `--mock-terminal=timeout` lets the terminal give up, `--mock-terminal=qr` simulates a broken terminal (orders come back as a Mollie QR). Works with a portal-mode booking (the backend then ignores `order_id`).
 
 ## Architecture Overview
@@ -107,6 +108,8 @@ A plain JSON response (older backend) is converted into the same events by the c
 **`commandService.js`** - Remote commands queued in the admin or driver portal (`restart_app`, `reboot_device`, `reload_config`): fetched after a poke and every 60 s, executed only once the renderer reports the booth idle (max 5 min wait), result reported to `/api/kiosk/commands/{id}`. `reboot_device` uses `shutdown /r` (ignored in `--dev`).
 
 **Backward compatibility**: every request carries `X-Kiosk-Features: terminal-payments,commands,realtime`. The backend only enables those behaviours for booths that announce them, so booths on older builds keep the portal flow and never see a payment gate. Add new capabilities to `KIOSK_FEATURES` in `apiClient.js` and gate them server-side.
+
+**`ledService.js`** - Booth LEDs: a WLED controller (QuinLED An-Penta-Plus) on any USB port. Every serial port is asked `v`; the one answering `WLED <build>` is kept open (opening resets the ESP32) and re-found after re-plugging (scan every 5 s). The renderer reports the step of the guest flow (`leds.js` → IPC `led:phase`: idle, countdown, flash, paywall, paid, payFailed, processing, reveal, printing, error, setup); `ledPhases.js` holds the WLED JSON state per step (colours, effect, brightness), so the controller needs no presets. Uses `serialport` (N-API prebuilt; `build.npmRebuild` is off so electron-builder does not try to compile it).
 
 **`credentialStore.js`** - Pairing credentials (encrypted with `safeStorage`, per environment)
 

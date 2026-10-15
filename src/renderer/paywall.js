@@ -6,6 +6,7 @@ import { hidePayQr, renderPayQr, showPayQrLoading } from './payqr.js';
 import { showScreen } from './screens.js';
 import { elements, screens, state } from './state.js';
 import { showNotification } from './ui.js';
+import { setLedPhase } from './leds.js';
 
 // =============================================================================
 // Paywall (pay-first flow, phase 3)
@@ -173,8 +174,10 @@ async function runPayment() {
         s.retries += 1;
         console.log(`[PAYWALL] Payment ${result.status} (${result.failureReason}) — retry ${s.retries}`);
         setStatus(declined ? t('paywall.declined') : t('paywall.retrying'), 'error');
+        setLedPhase('payFailed');
         await new Promise(r => setTimeout(r, 1500));
         if (s.done) return;
+        setLedPhase('paywall');
         return runPayment();
       }
       return bailOut(declined ? t('paywall.declinedFinal') : t('paywall.timeout'));
@@ -195,6 +198,7 @@ async function onPaid(order) {
 
   // Escalate the energy for a beat, then hand over to the generation theater
   setStatus(t('paywall.paid'), 'ok');
+  setLedPhase('paid');
   hidePayQr(elements.paywallQr);
   screens.paywall.classList.add('charged');
   await new Promise(r => setTimeout(r, 900));

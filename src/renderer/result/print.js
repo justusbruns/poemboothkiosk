@@ -1,6 +1,7 @@
 import { isPaidPrintActive, isTerminalPayMode } from '../booth/badges.js';
 import { updateResultActionLabel } from './ui.js';
 import { elements, state } from '../state.js';
+import { setLedPhase } from '../leds.js';
 
 // Whether the kiosk prints on its own attached printer from the result screen:
 // free mode (hold-to-print) or the pay-first terminal flow (press-to-print of
@@ -136,6 +137,7 @@ export async function handlePrint() {
     return;
   }
   state.isPrinting = true;
+  setLedPhase('printing');
 
   try {
     if (!state.currentSession) {
@@ -240,6 +242,9 @@ export async function handlePrint() {
     updatePrinterStatus({ available: false, status: 'error', message: error.message });
     resetPrintCircleIdle();
     state.isPrinting = false;
+  } finally {
+    // A batch of paid copies (terminal mode) keeps "printing" until the last one
+    if (state.screen === 'result' && state.resultPhase !== 'printing') setLedPhase('reveal');
   }
 }
 

@@ -9,6 +9,7 @@ import { confirmRetakeFromBooth } from '../result/terminal.js';
 import { updateBoothBrandVisibility } from '../screens.js';
 import { elements, state } from '../state.js';
 import { showError } from '../ui.js';
+import { setLedPhase } from '../leds.js';
 
 // =============================================================================
 // Photo Capture Flow
@@ -73,6 +74,7 @@ export function onNextVideoFrame(video, fn) {
 // on screen at the moment of capture — unlike a Lottie flash layer, which can be skipped
 // or delayed when the animation drops frames on slower kiosks.
 export function flashAndCapture() {
+  setLedPhase('flash');
   const flash = elements.whiteFlash;
   const capture = () => capturePhoto(elements.cameraVideo, elements.cameraCanvas)
     .then((url) => { state.currentPhoto = url; })
@@ -212,6 +214,7 @@ export async function handleCapture() {
     await flyOutSelectedCard();
 
     // Play the new countdown animation over the live camera; it captures the photo during its flash
+    setLedPhase('countdown');
     console.log('[RENDERER] Playing countdown animation...');
     await playCountdownAndCapture();
     console.log('[RENDERER] Photo captured during flash, length:', state.currentPhoto ? state.currentPhoto.length : 0);
