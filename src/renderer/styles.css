@@ -533,32 +533,32 @@ h1, h2, h3, h4, h5, h6, p {
   z-index: 0;
 }
 
+/* Soft rings drifting out from the centre card: fade in, glide out, fade away
+   (no hard start), long and slow so it breathes instead of ticks */
 .pulse-ring {
   position: absolute;
   width: 100%;
   height: 100%;
-  border: 3px solid rgba(255, 255, 255, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.55);
   border-radius: 50%;
-  animation: pulse 3s ease-out infinite;
+  opacity: 0;
+  animation: pulse 5.4s cubic-bezier(0.33, 0, 0.2, 1) infinite;
+  will-change: transform, opacity;
 }
 
 .pulse-ring:nth-child(2) {
-  animation-delay: 1s;
+  animation-delay: 1.8s;
 }
 
 .pulse-ring:nth-child(3) {
-  animation-delay: 2s;
+  animation-delay: 3.6s;
 }
 
 @keyframes pulse {
-  0% {
-    transform: scale(0.3);
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-    opacity: 0;
-  }
+  0%   { transform: scale(0.45); opacity: 0; }
+  20%  { opacity: 0.8; }
+  70%  { opacity: 0.25; }
+  100% { transform: scale(1.18); opacity: 0; }
 }
 
 .style-hint {
@@ -577,31 +577,89 @@ h1, h2, h3, h4, h5, h6, p {
   margin-bottom: 1.6rem; /* room for the badge that overhangs below the cards */
 }
 
-/* Price badge - single-print cost, centred on the bottom edge of the selected style card */
+/* Price badge - single-print cost as a glossy white sphere (a little pearl /
+   button) on the bottom edge of the selected style card: "only €8". It floats
+   gently and has a soft breathing glow. */
 .price-badge {
   position: absolute;
   left: 50%;
   top: calc(50% + 100px); /* badge centre = bottom edge of the 200px-tall centre card */
   transform: translate(-50%, -50%);
-  width: 63px;            /* 25% smaller than before */
-  height: 63px;
+  width: 88px;
+  height: 88px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.75);
+  background:
+    radial-gradient(circle at 34% 26%, #ffffff 0%, #ffffff 16%, #f3f3f3 42%, #dcdcdc 74%, #c4c4c4 100%);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 6;             /* above the whole coverflow, so styles rotate behind it */
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 3px 6px rgba(0, 0, 0, 0.25),
+    inset 0 -7px 14px rgba(0, 0, 0, 0.14),
+    inset 0 5px 10px rgba(255, 255, 255, 0.95);
   pointer-events: none;
+  animation: priceFloat 4.8s ease-in-out infinite;
+}
+
+/* Specular highlight: makes it read as a sphere, not a flat disc */
+.price-badge::before {
+  content: '';
+  position: absolute;
+  top: 9%;
+  left: 21%;
+  width: 40%;
+  height: 24%;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0));
+  transform: rotate(-18deg);
+}
+
+/* Soft halo that breathes */
+.price-badge::after {
+  content: '';
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  box-shadow: 0 0 26px 8px rgba(255, 255, 255, 0.32);
+  opacity: 0.5;
+  animation: priceGlow 3.6s ease-in-out infinite;
+  z-index: -1;
+}
+
+@keyframes priceFloat {
+  0%, 100% { transform: translate(-50%, -50%); }
+  50%      { transform: translate(-50%, calc(-50% - 5px)); }
+}
+
+@keyframes priceGlow {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 0.9; }
+}
+
+.price-only {
+  position: relative;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(0, 0, 0, 0.5);
+  line-height: 1;
+  margin-bottom: 3px;
 }
 
 .price-amount {
+  position: relative;
   font-family: 'Inter', sans-serif;
-  font-weight: 700;
-  font-size: 1.15rem;     /* scaled down with the badge */
-  color: #ffffff;
+  font-weight: 800;
+  font-size: 1.5rem;
+  color: #111111;
   text-align: center;
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 /* "Trying is always free" reassurance (paid mode), right under the hero */

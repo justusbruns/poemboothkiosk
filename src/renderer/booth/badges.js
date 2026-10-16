@@ -105,6 +105,8 @@ export function updatePriceBadge() {
   if (elements.priceBadge && elements.priceAmount) {
     if (pay && pay.print_enabled && firstTierCents && firstTierCents > 0) {
       elements.priceAmount.textContent = formatPrice(firstTierCents, pay.currency);
+      const only = document.getElementById('price-only');
+      if (only) only.textContent = t('booth.priceOnly');
       elements.priceBadge.style.display = 'flex';
     } else {
       elements.priceBadge.style.display = 'none';

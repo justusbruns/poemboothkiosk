@@ -42,6 +42,7 @@ export const en = {
     pairingConnected: 'Connected as {name} — starting…'
   },
   booth: {
+    priceOnly: "only",
     pressForPoetry: 'Press for Poetry',
     turnKnob: 'Turn knob to change style',
     turnAndPress: 'Turn the knob & Press',

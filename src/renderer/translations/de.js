@@ -14,6 +14,7 @@ export const de = {
     holdQRCode: 'Halten Sie Ihren WLAN-QR-Code vor die Kamera'
   },
   booth: {
+    priceOnly: "nur",
     pressForPoetry: 'Drücken für Poesie',
     turnKnob: 'Drehen Sie den Knopf, um den Stil zu ändern',
     turnAndPress: 'Knopf drehen & Drücken',

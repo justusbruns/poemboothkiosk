@@ -42,6 +42,7 @@ export const nl = {
     pairingConnected: 'Gekoppeld als {name} — starten…'
   },
   booth: {
+    priceOnly: "slechts",
     pressForPoetry: 'Druk voor Poëzie',
     turnKnob: 'Draai aan de knop om van stijl te veranderen',
     turnAndPress: 'Draai aan de knop & Druk',
