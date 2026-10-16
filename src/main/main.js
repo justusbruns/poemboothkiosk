@@ -115,6 +115,22 @@ const USE_MOCK_TERMINAL = !!MOCK_TERMINAL_ARG;
 const NO_LEDS = process.argv.includes('--no-leds');
 const LED_PORT = (process.argv.find(a => a.startsWith('--led-port=')) || '').split('=')[1] || null;
 const MOCK_TERMINAL_OUTCOME = (MOCK_TERMINAL_ARG && MOCK_TERMINAL_ARG.split('=')[1]) || 'paid';
+
+// One kiosk at a time: a second copy (an extra autostart entry, an old install,
+// a double click) would fight over the camera, the printer and the LED port.
+// The second copy quits and brings the running one to the front.
+// app.relaunch() is safe: the new process starts after this one has exited.
+if (!app.requestSingleInstanceLock()) {
+  console.log('[MAIN] Another kiosk is already running, quitting');
+  app.exit(0);
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
 let mainWindow;
 let rendererCrashTimes = [];
 let windowRecreateTimes = [];   // kiosk-mode window recreations (bounded)
