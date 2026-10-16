@@ -266,10 +266,14 @@ function renderChoiceCard(item) {
     name.textContent = item.kind === 'style' ? (item.style.name || '') : item.label;
     card.appendChild(name);
   }
-  const label = document.createElement('span');
-  label.className = 'choice-label';
-  label.textContent = item.kind === 'portrait' ? item.label : (item.style.name || '');
-  card.appendChild(label);
+  // Only the guest's own portraits get a label (like the start screen, the
+  // style cards speak for themselves)
+  if (item.kind === 'portrait') {
+    const label = document.createElement('span');
+    label.className = 'choice-label';
+    label.textContent = item.label;
+    card.appendChild(label);
+  }
   return card;
 }
 

@@ -48,6 +48,9 @@ export async function processPhoto(opts = {}) {
     // only take over once the gate opens.
     const gate = opts.gate || null;
     state.revealGate = gate;
+    // Forget the previous generation (a retake starts from a result on screen:
+    // its 'resultShown' must not keep the processing screen away)
+    state.generate = null;
     const enterProcessing = async () => {
       if (state.generate && state.generate.resultShown) return; // result came first
       // Show processing screen with captured photo ("theater" escalation after a payment)
