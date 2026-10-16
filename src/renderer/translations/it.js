@@ -63,6 +63,9 @@ export const it = {
     ]
   },
   result: {
+    printingProgress: "Stampa {n} di {total}…",
+    printingOne: "Stampa in corso…",
+    printsComing: "La tua stampa sta arrivando!",
     tryStyleCta: "Premi per provare questo stile",
     hintCompare: "Oppure gira per confrontare i tuoi ritratti",
     portraitN: "Ritratto {n}",

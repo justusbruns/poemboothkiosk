@@ -63,6 +63,9 @@ export const de = {
     ]
   },
   result: {
+    printingProgress: "Drucke {n} von {total}…",
+    printingOne: "Wird gedruckt…",
+    printsComing: "Dein Druck kommt gleich!",
     tryStyleCta: "Drücke, um diesen Stil auszuprobieren",
     hintCompare: "Oder drehen, um deine Porträts zu vergleichen",
     portraitN: "Porträt {n}",

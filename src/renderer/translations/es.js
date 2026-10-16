@@ -63,6 +63,9 @@ export const es = {
     ]
   },
   result: {
+    printingProgress: "Imprimiendo {n} de {total}…",
+    printingOne: "Imprimiendo…",
+    printsComing: "¡Tu copia está en camino!",
     tryStyleCta: "Pulsa para probar este estilo",
     hintCompare: "O gira para comparar tus retratos",
     portraitN: "Retrato {n}",

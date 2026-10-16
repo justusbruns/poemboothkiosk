@@ -128,7 +128,9 @@ export async function completePrintHold() {
   await handlePrint();
 }
 
-export async function handlePrint() {
+// opts.batch: one of several paid copies (terminal.js shows one counter and a
+// single check mark for the whole batch instead of a check mark per copy)
+export async function handlePrint(opts = {}) {
   console.log('[RENDERER] ===== PRINT REQUEST STARTED =====');
   console.log('[RENDERER] Session ID:', state.currentSession?.id, 'prints remaining:', state.printsRemaining);
 
@@ -205,6 +207,10 @@ export async function handlePrint() {
     if (result.success) {
       console.log('[RENDERER] ✅ Print job completed successfully');
       state.printsRemaining = Math.max(0, state.printsRemaining - 1);
+      if (opts.batch) {
+        state.isPrinting = false;
+        return;
+      }
 
       // Brief "sent" checkmark as confirmation
       if (elements.printIcon) elements.printIcon.style.display = 'none';

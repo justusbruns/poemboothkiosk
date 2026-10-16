@@ -91,6 +91,9 @@ export const en = {
     ]
   },
   result: {
+    printingProgress: "Printing {n} of {total}…",
+    printingOne: "Printing…",
+    printsComing: "Your print is on its way!",
     tryStyleCta: "Press to try this style",
     hintCompare: "Or turn to compare your portraits",
     portraitN: "Portrait {n}",

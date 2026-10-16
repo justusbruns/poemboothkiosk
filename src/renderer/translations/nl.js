@@ -91,6 +91,9 @@ export const nl = {
     ]
   },
   result: {
+    printingProgress: "Printen {n} van {total}…",
+    printingOne: "Printen…",
+    printsComing: "Je print komt eraan!",
     tryStyleCta: "Druk om deze stijl te proberen",
     hintCompare: "Of draai om je portretten te vergelijken",
     portraitN: "Portret {n}",

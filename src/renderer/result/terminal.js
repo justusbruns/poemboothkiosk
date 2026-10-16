@@ -154,27 +154,49 @@ async function printAllPaid() {
   setPhase('printing');
   hidePanel();
   cancelResultTimer();
-  showCircles({ qr: false, print: true });
+  // The QR for the digital copy is there right away, next to the printing button
+  if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanForDigital');
+  showCircles({ qr: true, print: true });
   setHint(t('result.hintPrinting'));
 
+  // All paid copies in one go: a counter on the button, one check mark at the end
+  const total = state.printsRemaining;
+  let done = 0;
   while (state.printsRemaining > 0 && state.screen === 'result') {
+    if (elements.printLabel) {
+      elements.printLabel.textContent = total > 1
+        ? t('result.printingProgress').replace('{n}', String(done + 1)).replace('{total}', String(total))
+        : t('result.printingOne');
+    }
     const before = state.printsRemaining;
-    await handlePrint();
+    await handlePrint({ batch: true });
     if (state.printsRemaining >= before) {
       console.warn('[TERMINAL] Print did not go through — stopping the batch');
       break;
     }
-    // Let the "sent" checkmark show before the next copy
-    if (state.printsRemaining > 0) await new Promise(r => setTimeout(r, 1200));
+    done += 1;
   }
 
   if (state.screen !== 'result') return;
+  if (done > 0) {
+    // One "sent" check mark for the batch
+    if (elements.printIcon) elements.printIcon.style.display = 'none';
+    if (elements.printDoneIcon) {
+      elements.printDoneIcon.style.display = 'flex';
+      setTimeout(() => elements.printDoneIcon.classList.add('show'), 50);
+    }
+    if (elements.printLabel) elements.printLabel.textContent = t('result.printsComing');
+  }
   setPhase('printed');
   setLedPhase('reveal');
-  resetPrintCircleIdle();
-  if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanForDigital');
-  showCircles({ qr: true, print: false });
   setHint(canUpsell() ? t('result.hintUpsell') : '');
+  // Keep the check mark a moment, then the QR alone (the print is on its way)
+  setTimeout(() => {
+    if (state.screen !== 'result' || state.resultPhase !== 'printed') return;
+    resetPrintCircleIdle();
+    if (elements.printLabel) elements.printLabel.textContent = t('result.pressToPrint');
+    showCircles({ qr: true, print: state.printsRemaining > 0 });
+  }, 2500);
   startResultTimer(IDLE_AFTER_PRINT_MS);
 }
 
