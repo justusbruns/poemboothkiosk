@@ -757,7 +757,7 @@ h1, h2, h3, h4, h5, h6, p {
 .input-badge {
   position: absolute;
   left: 50%;
-  bottom: 10px;
+  top: 10px; /* top of the card: the price sphere covers the bottom edge */
   transform: translateX(-50%);
   padding: 3px 10px;
   border-radius: 999px;
@@ -772,9 +772,6 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 /* The price badge overlaps the card's bottom edge; lift the label above it */
-.coverflow-wrap:has(.price-badge[style*="flex"]) .input-badge {
-  bottom: 40px;
-}
 
 .style-card img {
   width: 100%;
@@ -939,6 +936,7 @@ h1, h2, h3, h4, h5, h6, p {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center 30%; /* keep the face above the price cards / QR */
   z-index: 1;
   filter: saturate(0.85) brightness(0.75);
   animation: paywallPhotoBreathe calc(4s / var(--energy-speed)) ease-in-out infinite;
@@ -988,41 +986,6 @@ h1, h2, h3, h4, h5, h6, p {
   to { transform: rotate(360deg); }
 }
 
-/* Horizontal scanner line sweeping the photo */
-.energy-scan {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 18vh;
-  top: -18vh;
-  background: linear-gradient(to bottom, rgba(140, 220, 255, 0), rgba(140, 220, 255, 0.35), rgba(255, 255, 255, 0.8), rgba(140, 220, 255, 0));
-  animation: energyScan calc(3.2s / var(--energy-speed)) ease-in-out infinite;
-  mix-blend-mode: screen;
-}
-
-@keyframes energyScan {
-  0%   { top: -18vh; }
-  100% { top: 100vh; }
-}
-
-/* Drifting particles: layered radial gradients scrolling upwards */
-.energy-particles {
-  position: absolute;
-  inset: -20% 0 0 0;
-  background-image:
-    radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 2px, transparent 3px),
-    radial-gradient(circle, rgba(150, 220, 255, 0.9) 0 1.5px, transparent 2.5px),
-    radial-gradient(circle, rgba(255, 160, 230, 0.8) 0 1px, transparent 2px);
-  background-size: 180px 240px, 120px 160px, 90px 130px;
-  background-position: 10px 20px, 60px 80px, 30px 10px;
-  animation: energyRise calc(9s / var(--energy-speed)) linear infinite;
-  opacity: 0.8;
-}
-
-@keyframes energyRise {
-  to { transform: translateY(-240px); }
-}
-
 /* Escalation once the payment is in: everything speeds up and brightens */
 #paywall-screen.charged { --energy-speed: 3; }
 #paywall-screen.charged .paywall-photo { filter: saturate(1.3) brightness(1.15); }
@@ -1036,66 +999,308 @@ h1, h2, h3, h4, h5, h6, p {
   right: 0;
   bottom: 0;
   z-index: 3;
-  padding: 2rem 18% 6rem;
+  padding: 1.5rem 12% 5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.45rem;
+  transition: opacity 0.35s ease, transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
   text-align: center;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.85) 0%, rgba(0, 0, 0, 0.6) 60%, rgba(0, 0, 0, 0) 100%);
 }
 
 .paywall-title {
   font-family: 'Inter', sans-serif;
-  font-size: 2rem;
+  font-size: 1.75rem;
   font-weight: 800;
   color: #fff;
   margin: 0 0 0.4rem;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
 }
 
-.paywall-price-block {
+/* ---- Knob carousel (carousel.js): one look for every "turn to choose" ---- */
+.kc {
+  position: relative;
+}
+
+.kc-track {
+  position: absolute;
+  inset: 0;
+}
+
+.kc-item {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.5s ease, filter 0.5s ease;
+  will-change: transform, opacity;
+}
+
+.kc-item:not(.is-active) {
+  filter: saturate(0.75) brightness(0.85);
+}
+
+.kc.kc-instant .kc-item {
+  transition: none;
+}
+
+/* "‹ turn for more ›" right under a carousel */
+.knob-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.7);
+  margin: 0.15rem 0 0.2rem;
+  min-height: 1.4em;
+}
+
+.knob-hint:empty {
+  display: none;
+}
+
+.knob-hint .knob-arrow {
+  display: inline-block;
+  font-size: 1.5rem;
+  line-height: 1;
+  opacity: 0.85;
+}
+
+.knob-hint .knob-arrow.left { animation: nudgeLeft 1.8s ease-in-out infinite; }
+.knob-hint .knob-arrow.right { animation: nudgeRight 1.8s ease-in-out infinite; }
+
+@keyframes nudgeLeft {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(-5px); }
+}
+
+@keyframes nudgeRight {
+  0%, 100% { transform: translateX(0); }
+  50%      { transform: translateX(5px); }
+}
+
+/* ---- Price cards (number of prints) ---- */
+.paywall-carousel {
+  width: 100%;
+  height: 214px;
+}
+
+.price-card {
+  width: 236px;
+  height: 196px;
+  box-sizing: border-box;
+  border-radius: 1.6rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0.9rem 2.2rem;
-  border-radius: 1.4rem;
-  background: rgba(255, 255, 255, 0.12);
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  backdrop-filter: blur(6px);
-  animation: paywallPulse 1.6s ease-in-out infinite;
-}
-
-@keyframes paywallPulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.35); }
-  50%      { box-shadow: 0 0 0 14px rgba(255, 255, 255, 0); }
-}
-
-.paywall-price {
+  justify-content: center;
+  gap: 0.15rem;
   font-family: 'Inter', sans-serif;
-  font-size: 3.6rem;
+  color: #ffffff;
+  background: rgba(18, 18, 24, 0.6);
+  border: 1.5px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  transition: background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease;
+}
+
+/* The chosen amount: the same white "pearl" look as the price on the start screen */
+.kc-item.is-active .price-card {
+  color: #111111;
+  background: radial-gradient(circle at 30% 18%, #ffffff 0%, #f6f6f6 50%, #e0e0e0 100%);
+  border-color: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.5), 0 0 36px rgba(255, 255, 255, 0.32);
+}
+
+.price-card-qty {
+  font-size: 1.05rem;
+  font-weight: 700;
+  opacity: 0.8;
+}
+
+.price-card-per {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.price-card-amount {
+  font-size: 3.1rem;
   font-weight: 800;
-  color: #fff;
-  line-height: 1;
-  transition: transform 0.15s ease;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
 }
 
-.paywall-price.bump { transform: scale(1.12); }
-
-.paywall-qty {
-  font-family: 'Inter', sans-serif;
-  font-size: 1.15rem;
+.price-card-unit {
+  font-size: 0.95rem;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.9);
-  margin-top: 0.35rem;
+  opacity: 0.7;
 }
+
+.price-card-was {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: line-through;
+  opacity: 0.5;
+  min-height: 1.1em;
+}
+
+.price-card-total {
+  margin-top: 0.2rem;
+  padding: 0.22rem 0.8rem;
+  border-radius: 999px;
+  font-size: 1rem;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.kc-item.is-active .price-card-total {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+/* Stars (starfield.js) fill their screen */
+.stars-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.processing-stars {
+  z-index: 2;
+  display: none;
+}
+
+#processing-screen.theater .processing-stars {
+  display: block;
+}
+
+/* ---- Payment approved: a moment of joy (stays ~3 s, the AI already works) ---- */
+.paywall-success {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0 14%;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+
+#paywall-screen.paid .paywall-success { opacity: 1; }
+#paywall-screen.paid .paywall-overlay { opacity: 0; transform: translateY(40px); }
+#paywall-screen.paid .paywall-photo { filter: saturate(1.2) brightness(0.55); }
+
+.success-check {
+  position: relative;
+  width: 230px;
+  height: 230px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 70px rgba(110, 255, 170, 0.45);
+  opacity: 0;
+  transform: scale(0.4);
+}
+
+.success-check svg {
+  width: 100%;
+  height: 100%;
+}
+
+.success-circle {
+  fill: none;
+  stroke: #4ade80;
+  stroke-width: 6;
+  stroke-dasharray: 327;
+  stroke-dashoffset: 327;
+  transform: rotate(-90deg);
+  transform-origin: 60px 60px;
+}
+
+.success-tick {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 80;
+  stroke-dashoffset: 80;
+}
+
+/* Expanding light ring when the check lands */
+.success-check::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid rgba(140, 255, 190, 0.8);
+  opacity: 0;
+}
+
+#paywall-screen.paid .success-check { animation: successPop 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s forwards; }
+#paywall-screen.paid .success-circle { animation: drawStroke 0.6s ease-out 0.3s forwards; }
+#paywall-screen.paid .success-tick { animation: drawStroke 0.4s ease-out 0.8s forwards; }
+#paywall-screen.paid .success-check::after { animation: successRing 1.2s ease-out 0.9s forwards; }
+#paywall-screen.paid .success-title { animation: riseIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.55s forwards; }
+#paywall-screen.paid .success-sub { animation: riseIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.85s forwards; }
+
+@keyframes successPop {
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes drawStroke {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes successRing {
+  0%   { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.9); }
+}
+
+@keyframes riseIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.success-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 3.2rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0.6rem 0 0;
+  text-shadow: 0 3px 18px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: translateY(18px);
+}
+
+.success-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.92);
+  margin: 0;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: translateY(18px);
+}
+
 
 /* QR fallback: pay by phone when the card terminal is unavailable */
 .paywall-qr {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 14px;
+  padding: 10px;
   border-radius: 1.2rem;
   background: #ffffff;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
