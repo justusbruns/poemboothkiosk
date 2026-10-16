@@ -43,10 +43,12 @@ function currentStyleId() {
   return typeof id === 'string' && /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }
 
-export async function createOrder(kind, quantity, sessionId = null) {
-  // The backend falls back to a Mollie QR when the booth's terminal is unavailable
+export async function createOrder(kind, quantity, sessionId = null, opts = {}) {
+  // The backend falls back to a Mollie QR when the booth's terminal is
+  // unavailable. Not for extra prints of a guest who paid on the terminal: a
+  // QR there is confusing (they can order more via the portal QR instead).
   const view = await window.electronAPI.orderCreate(kind, quantity, sessionId, {
-    allowMollieFallback: true,
+    allowMollieFallback: opts.allowMollieFallback !== false,
     locale: getCurrentLanguage() || 'nl',
     // The style on screen when the guest pays (conversion per style in the portal)
     styleId: kind === 'generation' ? currentStyleId() : null

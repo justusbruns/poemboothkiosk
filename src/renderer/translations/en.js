@@ -91,6 +91,8 @@ export const en = {
     ]
   },
   result: {
+    scanReceiptAndMore: "Scan for your receipt,<br/>digital copy and extra prints",
+    upsellTerminalBusy: "The card terminal is busy. Scan the QR to order extra prints.",
     printingProgress: "Printing {n} of {total}…",
     printingOne: "Printing…",
     printsComing: "Your print is on its way!",

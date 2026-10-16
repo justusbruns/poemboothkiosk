@@ -63,6 +63,8 @@ export const fr = {
     ]
   },
   result: {
+    scanReceiptAndMore: "Scanne pour ton reçu,<br/>la version numérique et plus de tirages",
+    upsellTerminalBusy: "Le terminal est occupé. Scanne le QR pour commander des tirages.",
     printingProgress: "Impression {n} sur {total}…",
     printingOne: "Impression…",
     printsComing: "Ton tirage arrive !",

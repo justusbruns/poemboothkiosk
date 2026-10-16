@@ -25,7 +25,7 @@ const PAY_TIMEOUT_MS = 90000;      // nobody tapped: back to the booth
 const QR_PAY_TIMEOUT_MS = 180000;  // paying by phone (Mollie) takes longer
 const QTY_DEBOUNCE_MS = 700;       // knob rest before the terminal amount is replaced
 const MAX_AUTO_RETRIES = 2;        // declined / timed-out terminal payments retried silently
-const PAID_MOMENT_MS = 3000;
+const PAID_MOMENT_MS = 5000;
 const QR_SIZE = 170;               // inside the chosen price card: the photo stays visible       // "Paid!" stays this long; the portrait is already being made
 
 let session = null; // { quantity, qtyTimer, abort, retries, done }
@@ -303,6 +303,7 @@ async function onPaid(order) {
   s.done = true;
   if (s.qtyTimer) clearTimeout(s.qtyTimer);
   state.order = order;
+  state.paidVia = order.provider || 'terminal'; // extra prints: same way of paying
   console.log(`[PAYWALL] Paid: order ${order.id}, ${order.quantity} print(s), ${order.amountCents}c`);
 
   // A moment of joy: check mark, stars go to warp. The portrait is already

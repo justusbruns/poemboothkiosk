@@ -154,9 +154,7 @@ async function printAllPaid() {
   setPhase('printing');
   hidePanel();
   cancelResultTimer();
-  // The QR for the digital copy is there right away, next to the printing button
-  if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanForDigital');
-  showCircles({ qr: true, print: true });
+  showCircles({ qr: false, print: true });
   setHint(t('result.hintPrinting'));
 
   // All paid copies in one go: a counter on the button, one check mark at the end
@@ -187,6 +185,9 @@ async function printAllPaid() {
     }
     if (elements.printLabel) elements.printLabel.textContent = t('result.printsComing');
   }
+  // Printed: now the QR for the receipt, the digital copy and extra prints
+  if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanReceiptAndMore');
+  showCircles({ qr: true, print: true });
   setPhase('printed');
   setLedPhase('reveal');
   setHint(canUpsell() ? t('result.hintUpsell') : '');
@@ -533,12 +534,16 @@ async function runUpsellOrder(u) {
   state.terminalBusy = true;
   let order;
   try {
-    u.creating = createOrder('extra_print', u.extra, state.currentSession && state.currentSession.id);
+    u.creating = createOrder('extra_print', u.extra, state.currentSession && state.currentSession.id, {
+      allowMollieFallback: state.paidVia === 'mollie'
+    });
     order = await u.creating;
   } catch (e) {
     if (upsell !== u || signal.aborted) return;
     console.error('[TERMINAL] Extra-print order failed:', e.code || e.message);
-    renderUpsell(t('result.upsellFailed'), 'error');
+    // Terminal busy / offline (no Mollie fallback here): point to the portal QR
+    const busy = e && (e.code === 'terminal_unavailable' || e.status === 503);
+    renderUpsell(busy ? t('result.upsellTerminalBusy') : t('result.upsellFailed'), 'error');
     state.terminalBusy = false;
     armPanelClose(closeUpsell);
     return;

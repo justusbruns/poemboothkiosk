@@ -63,6 +63,8 @@ export const de = {
     ]
   },
   result: {
+    scanReceiptAndMore: "Scanne für Beleg,<br/>digitale Version und Extradrucke",
+    upsellTerminalBusy: "Das Kartenterminal ist gerade belegt. Scanne den QR-Code für Extradrucke.",
     printingProgress: "Drucke {n} von {total}…",
     printingOne: "Wird gedruckt…",
     printsComing: "Dein Druck kommt gleich!",

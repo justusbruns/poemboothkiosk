@@ -63,6 +63,8 @@ export const es = {
     ]
   },
   result: {
+    scanReceiptAndMore: "Escanea para tu recibo,<br/>versión digital y más copias",
+    upsellTerminalBusy: "El datáfono está ocupado. Escanea el QR para pedir más copias.",
     printingProgress: "Imprimiendo {n} de {total}…",
     printingOne: "Imprimiendo…",
     printsComing: "¡Tu copia está en camino!",

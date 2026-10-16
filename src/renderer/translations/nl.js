@@ -91,6 +91,8 @@ export const nl = {
     ]
   },
   result: {
+    scanReceiptAndMore: "Scan voor je bonnetje,<br/>digitale versie en extra prints",
+    upsellTerminalBusy: "De pinautomaat is even bezet. Scan de QR om extra prints te bestellen.",
     printingProgress: "Printen {n} van {total}…",
     printingOne: "Printen…",
     printsComing: "Je print komt eraan!",
