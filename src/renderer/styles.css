@@ -1732,7 +1732,7 @@ h1, h2, h3, h4, h5, h6, p {
   top: 10%; /* 10% offset from top of screen */
   left: 0;
   right: 0;
-  bottom: 340px; /* Leave space for action circles at bottom */
+  bottom: 22vh; /* Leave space for the action circles at the bottom */
   width: 80%; /* 10% margin on each side */
   max-width: 80%;
   margin: 0 auto;
@@ -1846,7 +1846,7 @@ h1, h2, h3, h4, h5, h6, p {
   /* never wider than the overlay (80% of the screen minus its padding), so the
      portrait is scaled down instead of running past the right edge */
   max-width: min(78vw, calc(80vw - 3rem));
-  max-height: calc(90vh - 360px);
+  max-height: calc(68vh - 6rem);
   width: auto;
   height: auto;
   border-radius: 14px;
@@ -1876,13 +1876,14 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 /* Action circles container */
+/* Result actions (scan / print), sized relative to the screen height */
 .action-circles {
   position: absolute;
-  bottom: 7.7rem; /* Moved up by 75px (half the print circle diameter) */
+  bottom: 5.5vh;
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  gap: 3rem;
+  gap: 4vh;
   z-index: 2;
 }
 
@@ -1895,8 +1896,8 @@ h1, h2, h3, h4, h5, h6, p {
 
 .action-circle {
   position: relative;
-  width: 150px;
-  height: 150px;
+  width: 12.5vh;
+  height: 12.5vh;
   border-radius: 50%;
   background: white;
   display: flex;
@@ -1907,7 +1908,7 @@ h1, h2, h3, h4, h5, h6, p {
 
 .circle-label {
   font-family: 'Inter', sans-serif;
-  font-size: 1.1rem;
+  font-size: 1.6vh;
   font-weight: 600;
   color: white;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
@@ -1917,8 +1918,8 @@ h1, h2, h3, h4, h5, h6, p {
 
 /* QR Code canvas inside circle */
 .qr-canvas {
-  width: 100px;
-  height: 100px;
+  width: 8.6vh;
+  height: 8.6vh;
   position: relative;
   z-index: 10;
   display: flex;
@@ -1992,8 +1993,8 @@ h1, h2, h3, h4, h5, h6, p {
   position: absolute;
   top: 0;
   left: 0;
-  width: 150px;
-  height: 150px;
+  width: 100%;
+  height: 100%;
   transform: rotate(-90deg);
   pointer-events: none;
   z-index: 5;
@@ -2380,7 +2381,7 @@ h1, h2, h3, h4, h5, h6, p {
   left: 0;
   right: 0;
   top: 10%;
-  bottom: 340px;
+  bottom: 22vh;
   z-index: 0;              /* peeking: behind the portrait, the side cards stick out */
   pointer-events: none;
   opacity: 0;
@@ -2417,9 +2418,9 @@ h1, h2, h3, h4, h5, h6, p {
 
 .choice-card {
   position: relative;
-  width: 600px;            /* 2:3 like the start screen's cards */
-  height: 900px;
-  border-radius: 40px;
+  width: 30vh;             /* 2:3 like the start screen's cards */
+  height: 45vh;
+  border-radius: calc(45vh * 0.0625);
   overflow: hidden;
   background: #111111;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6); /* no border: like the start screen's cards */
@@ -2440,14 +2441,14 @@ h1, h2, h3, h4, h5, h6, p {
 .choice-label {
   position: absolute;
   left: 50%;
-  top: 18px;
+  top: 1.4vh;
   transform: translateX(-50%);
-  padding: 6px 18px;
+  padding: 0.45vh 1.3vh;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.65);
   color: #ffffff;
   font-family: 'Inter', sans-serif;
-  font-size: 1.3rem;
+  font-size: 1.5vh;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -2476,3 +2477,26 @@ h1, h2, h3, h4, h5, h6, p {
 
 .result-hint .knob-arrow.left { animation: nudgeLeft 1.8s ease-in-out infinite; }
 .result-hint .knob-arrow.right { animation: nudgeRight 1.8s ease-in-out infinite; }
+
+.print-icon svg {
+  width: 4.4vh;
+  height: 4.4vh;
+}
+
+.print-done-icon svg {
+  width: 5vh;
+  height: 5vh;
+}
+
+.result-hint {
+  font-size: 1.5vh;
+}
+
+/* Choosing: the instruction sits big above the cards */
+#result-screen.choosing .result-hint {
+  top: 5.5vh;
+  bottom: auto;
+  font-size: 2.6vh;
+  font-weight: 800;
+  line-height: 1.25;
+}
