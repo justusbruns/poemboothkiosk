@@ -1,3 +1,10 @@
+/* Start screen style cards: a quarter of the screen height on any display */
+:root {
+  --card-h: 25vh;
+  --card-w: calc(var(--card-h) * 2 / 3);
+  --card-r: calc(var(--card-h) * 0.0625);
+}
+
 /* Reset and Base Styles */
 * {
   margin: 0;
@@ -524,8 +531,8 @@ h1, h2, h3, h4, h5, h6, p {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 300px;
-  height: 300px;
+  width: calc(var(--card-h) * 1.5);
+  height: calc(var(--card-h) * 1.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -574,7 +581,7 @@ h1, h2, h3, h4, h5, h6, p {
 /* Wrapper around the coverflow so the price badge can overlap the centre card */
 .coverflow-wrap {
   position: relative;
-  margin-bottom: 1.6rem; /* room for the badge that overhangs below the cards */
+  margin-bottom: 3.2vh; /* room for the badge that overhangs below the cards */
 }
 
 /* Price badge - single-print cost as a glossy white sphere (a little pearl /
@@ -583,10 +590,10 @@ h1, h2, h3, h4, h5, h6, p {
 .price-badge {
   position: absolute;
   left: 50%;
-  top: calc(50% + 100px); /* badge centre = bottom edge of the 200px-tall centre card */
+  top: calc(50% + var(--card-h) / 2); /* badge centre = bottom edge of the centre card */
   transform: translate(-50%, -50%);
-  width: 88px;
-  height: 88px;
+  width: 6.5vh;
+  height: 6.5vh;
   border-radius: 50%;
   background:
     radial-gradient(circle at 34% 26%, #ffffff 0%, #ffffff 16%, #f3f3f3 42%, #dcdcdc 74%, #c4c4c4 100%);
@@ -631,7 +638,7 @@ h1, h2, h3, h4, h5, h6, p {
 
 @keyframes priceFloat {
   0%, 100% { transform: translate(-50%, -50%); }
-  50%      { transform: translate(-50%, calc(-50% - 5px)); }
+  50%      { transform: translate(-50%, calc(-50% - 0.3vh)); }
 }
 
 @keyframes priceGlow {
@@ -642,7 +649,7 @@ h1, h2, h3, h4, h5, h6, p {
 .price-only {
   position: relative;
   font-family: 'Inter', sans-serif;
-  font-size: 0.6rem;
+  font-size: 0.72vh;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -655,7 +662,7 @@ h1, h2, h3, h4, h5, h6, p {
   position: relative;
   font-family: 'Inter', sans-serif;
   font-weight: 800;
-  font-size: 1.5rem;
+  font-size: 1.8vh;
   color: #111111;
   text-align: center;
   line-height: 1;
@@ -700,12 +707,12 @@ h1, h2, h3, h4, h5, h6, p {
 .style-coverflow {
   position: relative;
   width: 100%;
-  height: 210px;
+  height: calc(var(--card-h) + 1vh);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1;
-  perspective: 1000px;        /* 3D depth so side cards tilt inward */
+  perspective: calc(var(--card-h) * 5); /* 3D depth so side cards tilt inward */
   perspective-origin: 50% 50%;
 }
 
@@ -713,13 +720,13 @@ h1, h2, h3, h4, h5, h6, p {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 134px;               /* 2:3 portrait */
-  height: 200px;
-  margin-left: -67px;
-  margin-top: -100px;
-  border-radius: 14px;
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.55);
-  perspective: 900px;         /* depth for the card's own flip */
+  width: var(--card-w);
+  height: var(--card-h);
+  margin-left: calc(var(--card-w) / -2);
+  margin-top: calc(var(--card-h) / -2);
+  border-radius: var(--card-r);
+  box-shadow: 0 1.25vh 3vh rgba(0, 0, 0, 0.55);
+  perspective: calc(var(--card-h) * 4.4); /* depth for the card's own flip */
   transform-origin: center center;
   transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.45s ease;
   will-change: transform, opacity;
@@ -742,7 +749,7 @@ h1, h2, h3, h4, h5, h6, p {
 .style-card-face {
   position: absolute;
   inset: 0;
-  border-radius: 14px;
+  border-radius: var(--card-r);
   overflow: hidden;
   background: #1f1f33;
   backface-visibility: hidden;
@@ -757,13 +764,13 @@ h1, h2, h3, h4, h5, h6, p {
 .input-badge {
   position: absolute;
   left: 50%;
-  top: 10px; /* top of the card: the price sphere covers the bottom edge */
+  top: 1vh; /* top of the card: the price sphere covers the bottom edge */
   transform: translateX(-50%);
-  padding: 3px 10px;
+  padding: 0.3vh 0.95vh;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.7);
   font-family: 'Inter', sans-serif;
-  font-size: 0.7rem;
+  font-size: 1vh;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -785,14 +792,14 @@ h1, h2, h3, h4, h5, h6, p {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.6rem;
+  padding: 1.2vh;
   background: linear-gradient(150deg, #4a4a72 0%, #23233b 100%);
 }
 
 .style-card-poem .poet-name {
   font-family: 'Inter', sans-serif;
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 2.1vh;
   line-height: 1.2;
   color: #ffffff;
   text-align: center;

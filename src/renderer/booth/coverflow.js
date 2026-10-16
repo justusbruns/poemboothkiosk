@@ -194,6 +194,8 @@ export function positionStyleCoverflow() {
   if (!cf) return;
   const cards = cf.children;
   const N = state.availableStyles.length;
+  // Slot offsets below are for a 134px-wide card; scale them to the real card
+  const k = ((cards[0] && cards[0].offsetWidth) || 134) / 134;
 
   for (let i = 0; i < cards.length; i++) {
     let o = i - state.currentStyleIndex;
@@ -214,7 +216,7 @@ export function positionStyleCoverflow() {
     else if (ao === 3) { x = 196; angle = 55; scale = 0.55; opacity = 0.28; z = 6; }
     else               { x = 236; angle = 55; scale = 0.5;  opacity = 0;    z = 0; }
 
-    const tx = dir * x;
+    const tx = dir * x * k;
     const rotY = -dir * angle; // left cards face right, right cards face left
 
     const card = cards[i];
