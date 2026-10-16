@@ -2364,3 +2364,103 @@ h1, h2, h3, h4, h5, h6, p {
   font-weight: 800;
   color: #111111;
 }
+
+/* ---- Result: choose a portrait or try another style (carousel) ----
+   'peeking': the real portrait is the middle, the neighbours peek in at the
+   screen edges. 'choosing': the carousel takes over (after a knob turn). */
+.result-carousel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 10%;
+  bottom: 340px;
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+#result-screen.peeking .result-carousel {
+  opacity: 1;
+}
+
+#result-screen:not(.choosing) .result-carousel .kc-item.is-active {
+  opacity: 0 !important;
+}
+
+.poem-overlay {
+  transition: opacity 0.45s ease, transform 0.45s ease;
+}
+
+#result-screen.choosing .poem-overlay {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.choice-card {
+  position: relative;
+  width: 620px;
+  height: 930px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #111111;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6);
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+
+.choice-card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.kc-item.is-active .choice-card {
+  border-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.6), 0 0 44px rgba(255, 236, 196, 0.35);
+}
+
+.choice-portrait {
+  border-color: rgba(255, 214, 120, 0.8);
+}
+
+.choice-label {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.65);
+  color: #ffffff;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.3rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.choice-name-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 2rem;
+  text-align: center;
+  font-family: 'EB Garamond', Georgia, serif;
+  font-size: 3.2rem;
+  color: #ffffff;
+  background: radial-gradient(circle at 30% 20%, #3a3a46, #15151b);
+}
+
+.result-hint .knob-arrow {
+  display: inline-block;
+  font-size: 1.4em;
+  line-height: 1;
+  vertical-align: -0.1em;
+}
+
+.result-hint .knob-arrow.left { animation: nudgeLeft 1.8s ease-in-out infinite; }
+.result-hint .knob-arrow.right { animation: nudgeRight 1.8s ease-in-out infinite; }

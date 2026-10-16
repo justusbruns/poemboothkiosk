@@ -91,6 +91,7 @@ export const nl = {
     ]
   },
   result: {
+    tryStyleCta: "Druk om deze stijl te proberen",
     hintCompare: "Of draai om je portretten te vergelijken",
     portraitN: "Portret {n}",
     pickCta: "Druk om dit<br/>portret te kiezen",

@@ -63,6 +63,7 @@ export const it = {
     ]
   },
   result: {
+    tryStyleCta: "Premi per provare questo stile",
     hintCompare: "Oppure gira per confrontare i tuoi ritratti",
     portraitN: "Ritratto {n}",
     pickCta: "Premi per scegliere<br/>questo ritratto",

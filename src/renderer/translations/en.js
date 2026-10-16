@@ -91,6 +91,7 @@ export const en = {
     ]
   },
   result: {
+    tryStyleCta: "Press to try this style",
     hintCompare: "Or turn to compare your portraits",
     portraitN: "Portrait {n}",
     pickCta: "Press to choose<br/>this portrait",

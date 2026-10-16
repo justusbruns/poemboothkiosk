@@ -63,6 +63,7 @@ export const de = {
     ]
   },
   result: {
+    tryStyleCta: "Drücke, um diesen Stil auszuprobieren",
     hintCompare: "Oder drehen, um deine Porträts zu vergleichen",
     portraitN: "Porträt {n}",
     pickCta: "Drücken, um dieses<br/>Porträt zu wählen",

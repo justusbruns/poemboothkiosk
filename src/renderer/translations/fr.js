@@ -63,6 +63,7 @@ export const fr = {
     ]
   },
   result: {
+    tryStyleCta: "Appuie pour essayer ce style",
     hintCompare: "Ou tournez pour comparer vos portraits",
     portraitN: "Portrait {n}",
     pickCta: "Appuyez pour choisir<br/>ce portrait",
