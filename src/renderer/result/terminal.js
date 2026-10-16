@@ -290,10 +290,7 @@ function buildChoice() {
     items,
     index: onScreenIndex(items),
     render: renderChoiceCard,
-    spacing: 96,
-    sideScale: 0.56,
-    sideOpacity: 0.85,
-    visible: 1
+    mode: 'coverflow' // the same row as on the start screen, big
   });
   el.style.display = '';
   return choice;

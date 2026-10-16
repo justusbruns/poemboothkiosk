@@ -19,8 +19,19 @@ export function createCarousel(container, opts = {}) {
     spacing = 82,       // neighbour centre, in % of an item's own width
     sideScale = 0.68,   // first neighbour; further ones shrink again
     sideOpacity = 0.55,
-    visible = 2         // neighbours shown on each side
+    visible = 2,        // neighbours shown on each side
+    mode = 'flat'       // 'coverflow': the start screen's 3D row (tilted side cards)
   } = opts;
+
+  // The start screen's coverflow slots (booth/coverflow.js), in % of a card's
+  // width so the same look works at any size: x, tilt, scale, opacity
+  const COVERFLOW = [
+    [0, 0, 1, 1],
+    [68.7, 45, 0.82, 0.85],
+    [112, 52, 0.66, 0.5],
+    [146, 55, 0.55, 0.28],
+    [176, 55, 0.5, 0]
+  ];
 
   container.classList.add('kc');
   container.innerHTML = '';
@@ -38,6 +49,16 @@ export function createCarousel(container, opts = {}) {
     nodes.forEach((el, i) => {
       const off = i - idx;
       const abs = Math.abs(off);
+      if (mode === 'coverflow') {
+        const [x, angle, scale, opacity] = COVERFLOW[Math.min(abs, 4)];
+        const dir = Math.sign(off);
+        el.style.transform = `translate(-50%, -50%) translateX(${dir * x}%) rotateY(${-dir * angle}deg) scale(${scale})`;
+        el.style.opacity = String(opacity);
+        el.style.zIndex = String(100 - abs);
+        el.classList.toggle('is-active', off === 0);
+        el.setAttribute('aria-hidden', off === 0 ? 'false' : 'true');
+        return;
+      }
       const scale = off === 0 ? 1 : Math.pow(sideScale, Math.min(abs, 3));
       // Push further neighbours a little less far so they tuck behind
       const x = off === 0 ? 0 : Math.sign(off) * (spacing + (abs - 1) * spacing * 0.55);
