@@ -1,6 +1,8 @@
 import { destroyLottieAnimation } from './lottie.js';
 import { showScreen } from './screens.js';
 import { elements, state } from './state.js';
+import { classifyError, retrySeconds } from './friendlyErrors.js';
+import { t } from './translations/index.js';
 
 // e.g. "1920×1080 @ 30fps", or "unknown" before the camera is up
 export function formatCameraResolution() {
@@ -22,11 +24,40 @@ export function updateProgress(message, percent) {
   console.log(`[PROGRESS] ${message} (${percent}%)`);
 }
 
-export function showError(title, message, error) {
+// opts.retry: what the button / automatic retry does (default: back to the
+// booth). The raw message never goes on screen; it is in the log.
+let errorRetryTimer = null;
+export function showError(title, message, error, opts = {}) {
   // Destroy loading animation
   destroyLottieAnimation();
+  console.error('[ERROR SCREEN]', title, '-', message);
 
-  elements.errorMessage.textContent = message;
+  const kind = classifyError(error || message);
+  const retry = typeof opts.retry === 'function' ? opts.retry : () => showScreen('booth');
+  state.errorRetry = () => {
+    if (errorRetryTimer) { clearInterval(errorRetryTimer); errorRetryTimer = null; }
+    retry();
+  };
+  const titleEl = document.getElementById('error-title');
+  const actionEl = document.getElementById('error-action');
+  const retryEl = document.getElementById('error-retry');
+  if (titleEl) titleEl.textContent = t(`errorScreen.${kind}.title`);
+  elements.errorMessage.textContent = t(`errorScreen.${kind}.text`);
+  if (actionEl) actionEl.textContent = t('errorScreen.pressButton');
+
+  // Try again by itself after a while (most problems solve themselves)
+  if (errorRetryTimer) clearInterval(errorRetryTimer);
+  let left = retrySeconds(kind);
+  const shownAt = Date.now();
+  const tick = () => {
+    // The screen fades in: only give up once we have really left it
+    if (state.screen !== 'error' && Date.now() - shownAt > 3000) { clearInterval(errorRetryTimer); errorRetryTimer = null; return; }
+    if (retryEl) retryEl.textContent = t('errorScreen.autoRetry').replace('{s}', String(left));
+    if (left <= 0) { state.errorRetry(); return; }
+    left -= 1;
+  };
+  errorRetryTimer = setInterval(tick, 1000);
+  setTimeout(tick, 0);
 
   if (state.isDev && error) {
     document.getElementById('debug-info').style.display = 'block';

@@ -114,6 +114,16 @@ export const fr = {
     paper: "Le papier est en cours de remplacement. On revient tout de suite !",
     printer: "L’imprimante est en cours de vérification. On revient tout de suite !"
   },
+  errorScreen: {
+    noStyles: {"title":"Presque prêt","text":"Cette booth n'a pas encore de styles. L'organisateur peut définir des styles pour l'événement ou le hub ; la booth démarre ensuite toute seule."},
+    notLinked: {"title":"Pas encore reliée","text":"Cette booth n'est reliée à aucun hub ni lieu. Demande à l'organisateur de la relier."},
+    connection: {"title":"Pas de connexion","text":"La booth n'atteint pas Internet. Vérifie le WiFi ou le câble ; elle reprend dès que la connexion revient."},
+    server: {"title":"Un instant","text":"Notre serveur ne répond pas pour le moment. Cela se règle généralement en une minute."},
+    camera: {"title":"Caméra introuvable","text":"La booth ne voit pas la caméra. Vérifie qu'elle est branchée et qu'aucun autre programme ne l'utilise."},
+    generic: {"title":"Petite pause","text":"Quelque chose n'a pas marché, rien d'inquiétant. On réessaie tout simplement."},
+    pressButton: "Appuie sur le bouton pour réessayer",
+    autoRetry: "Nouvel essai automatique dans {s} secondes"
+  },
   paywall: {
     perPhoto: "par photo",
     total: "total {price}",

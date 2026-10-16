@@ -142,6 +142,16 @@ export const en = {
     paper: "The paper is being replaced. Back in a moment!",
     printer: "The printer is being checked. Back in a moment!"
   },
+  errorScreen: {
+    noStyles: {"title":"Almost ready","text":"This booth has no styles to choose from yet. The organiser can set styles for the event or hub; the booth then starts by itself."},
+    notLinked: {"title":"Not linked yet","text":"This booth is not linked to a hub or location yet. Ask the organiser to link it."},
+    connection: {"title":"No connection right now","text":"The booth cannot reach the internet. Check the WiFi or cable; it carries on as soon as the connection is back."},
+    server: {"title":"One moment","text":"Our server is not responding right now. This usually resolves within a minute."},
+    camera: {"title":"Camera not found","text":"The booth cannot see the camera. Check that it is connected and not used by another program."},
+    generic: {"title":"A short pause","text":"Something went wrong, but nothing to worry about. We simply try again."},
+    pressButton: "Press the button to try again",
+    autoRetry: "We try again by ourselves in {s} seconds"
+  },
   paywall: {
     perPhoto: "per photo",
     total: "total {price}",

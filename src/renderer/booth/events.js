@@ -96,8 +96,9 @@ export function setupEventListeners() {
     // Small delay to avoid race conditions with screen transitions
     setTimeout(() => {
       if (state.screen === 'error') {
-        // Retry from error screen
-        showScreen('booth');
+        // Retry from the error screen (reload after a failed start, else the booth)
+        if (typeof state.errorRetry === 'function') state.errorRetry();
+        else showScreen('booth');
       }
     }, 100);
   });

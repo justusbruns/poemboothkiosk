@@ -419,7 +419,7 @@ export async function initializeApp() {
       return;
     }
 
-    showError('Initialization failed', error.message, error);
+    showError('Initialization failed', error.message, error, { retry: () => window.location.reload() });
   }
 }
 

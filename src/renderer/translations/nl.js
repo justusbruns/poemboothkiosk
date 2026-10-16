@@ -142,6 +142,16 @@ export const nl = {
     paper: "Het papier wordt vervangen. We zijn zo weer terug!",
     printer: "De printer wordt even nagekeken. We zijn zo weer terug!"
   },
+  errorScreen: {
+    noStyles: {"title":"Bijna klaar","text":"Deze booth heeft nog geen stijlen om uit te kiezen. De beheerder kan stijlen instellen bij het event of de hub; daarna start de booth vanzelf."},
+    notLinked: {"title":"Nog niet gekoppeld","text":"Deze booth is nog niet aan een hub of locatie gekoppeld. Vraag de beheerder om hem te koppelen."},
+    connection: {"title":"Even geen verbinding","text":"De booth kan het internet niet bereiken. Controleer de wifi of de kabel; zodra de verbinding terug is, gaat hij verder."},
+    server: {"title":"Even geduld","text":"Onze server reageert even niet. Dat is meestal binnen een minuut opgelost."},
+    camera: {"title":"Camera niet gevonden","text":"De booth ziet de camera niet. Controleer of de camera is aangesloten en niet door een ander programma wordt gebruikt."},
+    generic: {"title":"Even pauze","text":"Er ging iets mis, maar niets om je zorgen over te maken. We proberen het gewoon opnieuw."},
+    pressButton: "Druk op de knop om het opnieuw te proberen",
+    autoRetry: "We proberen het over {s} seconden vanzelf opnieuw"
+  },
   paywall: {
     perPhoto: "per foto",
     total: "totaal {price}",

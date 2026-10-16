@@ -114,6 +114,16 @@ export const es = {
     paper: "Estamos cambiando el papel. ¡Volvemos enseguida!",
     printer: "Estamos revisando la impresora. ¡Volvemos enseguida!"
   },
+  errorScreen: {
+    noStyles: {"title":"Casi listo","text":"Esta booth aún no tiene estilos. El organizador puede configurarlos para el evento o el hub; después la booth arranca sola."},
+    notLinked: {"title":"Aún no vinculada","text":"Esta booth no está vinculada a un hub o ubicación. Pide al organizador que la vincule."},
+    connection: {"title":"Sin conexión","text":"La booth no llega a internet. Revisa el WiFi o el cable; sigue en cuanto vuelva la conexión."},
+    server: {"title":"Un momento","text":"Nuestro servidor no responde ahora mismo. Suele resolverse en un minuto."},
+    camera: {"title":"Cámara no encontrada","text":"La booth no ve la cámara. Comprueba que esté conectada y que ningún otro programa la use."},
+    generic: {"title":"Una pequeña pausa","text":"Algo salió mal, nada de qué preocuparse. Lo intentamos de nuevo."},
+    pressButton: "Pulsa el botón para intentarlo de nuevo",
+    autoRetry: "Lo volvemos a intentar en {s} segundos"
+  },
   paywall: {
     perPhoto: "por foto",
     total: "total {price}",

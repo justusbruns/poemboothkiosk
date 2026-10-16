@@ -2082,32 +2082,70 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 /* Error Screen */
+/* Calm error screen: dark, a soft breathing icon, plain words, auto retry */
 #error-screen {
-  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+  background: radial-gradient(circle at 50% 35%, #2a2a36 0%, #121218 70%);
 }
 
 .error-content {
   font-family: 'Inter', sans-serif;
   text-align: center;
-  max-width: 600px;
+  max-width: 66%;              /* oval enclosure */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 
-.error-content .icon {
-  font-size: 5rem;
-  margin-bottom: 1rem;
+.error-icon {
+  width: 8rem;
+  height: 8rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 2rem;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 60px rgba(247, 145, 31, 0.25);
+  animation: errorBreathe 4s ease-in-out infinite;
+}
+
+.error-icon svg {
+  width: 3.6rem;
+  height: 3.6rem;
+}
+
+@keyframes errorBreathe {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(247, 145, 31, 0.18); }
+  50%      { transform: scale(1.05); box-shadow: 0 0 70px rgba(247, 145, 31, 0.35); }
 }
 
 .error-content h1 {
   font-family: 'Inter', sans-serif;
-  font-size: 2.5rem;
-  margin-bottom: 1rem;
+  font-size: 3rem;
+  font-weight: 800;
+  margin: 0 0 1.2rem;
 }
 
 #error-message {
   font-family: 'Inter', sans-serif;
-  font-size: 1.5rem;
+  font-size: 1.7rem;
+  line-height: 1.45;
   opacity: 0.9;
-  margin-bottom: 2rem;
+  margin: 0 0 2rem;
+}
+
+.error-action {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.6rem;
+}
+
+.error-retry {
+  font-size: 1.25rem;
+  opacity: 0.6;
+  margin: 0;
+  min-height: 1.5em;
 }
 
 .debug-info {

@@ -40,7 +40,7 @@ const LED_PHASES = {
   // Printing
   printing: { on: true, bri: 220, transition: 5, seg: { fx: 2, sx: 120, col: [WHITE, OFF] } },
   // Error screen
-  error: { on: true, bri: 200, transition: 0, seg: { fx: 1, sx: 120, col: [RED, OFF] } },
+  error: { on: true, bri: 120, transition: 10, seg: { fx: 2, sx: 40, col: [[255, 110, 0, 0], OFF] } },
   // Setup screens (language, WiFi, pairing, update): calm and dim
   setup: solid(WARM, 40, 10),
 };
