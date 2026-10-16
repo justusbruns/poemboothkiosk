@@ -185,20 +185,39 @@ async function printAllPaid() {
     }
     if (elements.printLabel) elements.printLabel.textContent = t('result.printsComing');
   }
-  // Printed: now the QR for the receipt, the digital copy and extra prints
-  if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanReceiptAndMore');
-  showCircles({ qr: true, print: true });
   setPhase('printed');
   setLedPhase('reveal');
   setHint(canUpsell() ? t('result.hintUpsell') : '');
-  // Keep the check mark a moment, then the QR alone (the print is on its way)
+  // The check mark stays a moment; then the QR takes the print button's place
+  // (receipt, digital copy and extra prints)
   setTimeout(() => {
     if (state.screen !== 'result' || state.resultPhase !== 'printed') return;
-    resetPrintCircleIdle();
-    if (elements.printLabel) elements.printLabel.textContent = t('result.pressToPrint');
-    showCircles({ qr: true, print: state.printsRemaining > 0 });
-  }, 2500);
+    if (state.printsRemaining > 0) { // a copy failed: keep the print button
+      resetPrintCircleIdle();
+      if (elements.printLabel) elements.printLabel.textContent = t('result.pressToPrint');
+      return;
+    }
+    swapPrintForQr();
+  }, 2200);
   startResultTimer(IDLE_AFTER_PRINT_MS);
+}
+
+// Print button shrinks away, then the QR grows in on the same spot
+function swapPrintForQr() {
+  const printCircle = document.getElementById('print-circle');
+  const qrCircle = document.getElementById('qr-circle');
+  if (elements.qrLabel) elements.qrLabel.innerHTML = t('result.scanReceiptAndMore');
+  if (printCircle) printCircle.classList.remove('show'); // scale out (0.4 s)
+  setTimeout(() => {
+    if (state.screen !== 'result') return;
+    resetPrintCircleIdle();
+    if (elements.printContainer) elements.printContainer.style.display = 'none';
+    if (qrCircle) qrCircle.classList.remove('show');
+    const qrBox = qrCircle && qrCircle.closest('.circle-container');
+    if (qrBox) qrBox.style.display = '';
+    // next frame: grow in
+    requestAnimationFrame(() => requestAnimationFrame(() => qrCircle && qrCircle.classList.add('show')));
+  }, 420);
 }
 
 // ---------------------------------------------------------------------------
