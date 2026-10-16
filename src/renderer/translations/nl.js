@@ -131,7 +131,16 @@ export const nl = {
     errorBody: "Er ging iets mis bij het maken van je portret.",
     cta: "Druk op de knop voor een nieuwe foto. Je hebt al betaald."
   },
+  outOfService: {
+    title: "Even buiten gebruik",
+    paper: "Het papier wordt vervangen. We zijn zo weer terug!",
+    printer: "De printer wordt even nagekeken. We zijn zo weer terug!"
+  },
   paywall: {
+    perPhoto: "per foto",
+    total: "totaal {price}",
+    paidTitle: "Betaald!",
+    paidSub: "Je portret wordt nu gemaakt",
     title: 'Klaar voor de transformatie?',
     scanToPay: "Scan om te betalen",
     terminalDown: 'De pinautomaat is even niet beschikbaar, betaal met je telefoon.',

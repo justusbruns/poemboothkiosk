@@ -2,6 +2,7 @@ import { isPaidPrintActive, isTerminalPayMode } from '../booth/badges.js';
 import { updateResultActionLabel } from './ui.js';
 import { elements, state } from '../state.js';
 import { setLedPhase } from '../leds.js';
+import { updateOutOfService } from '../outOfService.js';
 
 // Whether the kiosk prints on its own attached printer from the result screen:
 // free mode (hold-to-print) or the pay-first terminal flow (press-to-print of
@@ -252,6 +253,7 @@ export async function handlePrint() {
 export function updatePrinterStatus(status) {
   console.log('[RENDERER] Updating printer status:', status);
   state.printerStatus = status;
+  updateOutOfService();
 
   // Find hardware instructions element
   const hardwareInstructions = document.querySelector('.hardware-instructions');

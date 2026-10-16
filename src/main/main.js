@@ -179,10 +179,14 @@ async function createWindow() {
     skipTaskbar: !IS_DEV,
     autoHideMenuBar: true,
     icon: path.join(__dirname, '../../assets/icon.ico'),
+    // Dev: the page is laid out at the booth's real 1080x1920 and shown at 50%,
+    // so what you see in the window is what the booth shows
+    useContentSize: IS_DEV,
     webPreferences: {
       nodeIntegration: false,  // Changed to false for security
       contextIsolation: true,   // Changed to true for security
-      preload: path.join(__dirname, 'preload.js')
+      preload: path.join(__dirname, 'preload.js'),
+      zoomFactor: IS_DEV ? 0.5 : 1
     },
     backgroundColor: '#1a1a1a',
     show: false
@@ -197,7 +201,7 @@ async function createWindow() {
 
   // Open DevTools in development mode
   if (IS_DEV) {
-    mainWindow.webContents.openDevTools();
+    mainWindow.webContents.openDevTools({ mode: 'detach' }); // own window: the booth view keeps its full 540x960
   }
 
   // Pipe renderer console logs into main process (so they hit the file logger too)
@@ -680,6 +684,15 @@ function startPrintJobService() {
     apiClient,
     getPrinterService: () => printerService
   });
+  // Paper / jam / cover state for the booth's out-of-order screen
+  printJobService.onSupply = (s) => {
+    if (mainWindow && !mainWindow.isDestroyed() && mainWindow.webContents && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.send('printer:supply', {
+        ok: !!s.ok, state: s.state || null, error: !!s.error,
+        sheets_remaining: Number.isFinite(s.sheets_remaining) ? s.sheets_remaining : null
+      });
+    }
+  };
   printJobService.start();
   startCommandService();
 }

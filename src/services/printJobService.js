@@ -94,6 +94,10 @@ class PrintJobService {
       }
     }
 
+    // The booth itself also needs to know (out-of-order screen at paid events)
+    if (supplies && typeof this.onSupply === 'function') {
+      try { this.onSupply(supplies); } catch (e) { /* never block the heartbeat */ }
+    }
     await this.apiClient.reportPrinterStatus(connected, status, supplies);
   }
 

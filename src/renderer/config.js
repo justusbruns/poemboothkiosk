@@ -3,6 +3,7 @@ import { applyCameraRotation } from './booth/camera.js';
 import { buildStyleCoverflow } from './booth/coverflow.js';
 import { applyBookingWifi } from './setup/wifi.js';
 import { elements, state } from './state.js';
+import { updateOutOfService } from './outOfService.js';
 
 // =============================================================================
 // Config Polling (Auto-update configs from backend)
@@ -99,6 +100,7 @@ export async function checkForConfigUpdates() {
         console.log('[CONFIG] Printing enabled changed:', oldConfig.printing_enabled, '=>', newConfig.printing_enabled);
       }
 
+      updateOutOfService();
       console.log('[CONFIG] Config updates applied successfully');
     } else {
       console.log('[CONFIG] No config changes detected');

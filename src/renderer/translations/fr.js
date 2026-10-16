@@ -103,7 +103,16 @@ export const fr = {
     errorBody: "Un problème est survenu lors de la création de votre portrait.",
     cta: "Appuyez sur le bouton pour une nouvelle photo. Vous avez déjà payé."
   },
+  outOfService: {
+    title: "Momentanément hors service",
+    paper: "Le papier est en cours de remplacement. On revient tout de suite !",
+    printer: "L’imprimante est en cours de vérification. On revient tout de suite !"
+  },
   paywall: {
+    perPhoto: "par photo",
+    total: "total {price}",
+    paidTitle: "Payé !",
+    paidSub: "Ton portrait est en cours de création",
     title: 'Prêt pour la transformation ?',
     scanToPay: "Scannez pour payer",
     terminalDown: 'Le terminal de paiement est indisponible, payez avec votre téléphone.',

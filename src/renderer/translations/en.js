@@ -131,7 +131,16 @@ export const en = {
     errorBody: "Something went wrong while making your portrait.",
     cta: "Press the button for a new photo. You have already paid."
   },
+  outOfService: {
+    title: "Temporarily out of order",
+    paper: "The paper is being replaced. Back in a moment!",
+    printer: "The printer is being checked. Back in a moment!"
+  },
   paywall: {
+    perPhoto: "per photo",
+    total: "total {price}",
+    paidTitle: "Paid!",
+    paidSub: "Your portrait is being made",
     title: 'Ready for the transformation?',
     scanToPay: "Scan to pay",
     terminalDown: 'The card terminal is unavailable right now, pay with your phone.',

@@ -103,7 +103,16 @@ export const es = {
     errorBody: "Algo ha salido mal al crear tu retrato.",
     cta: "Pulsa el botón para una foto nueva. Ya has pagado."
   },
+  outOfService: {
+    title: "Fuera de servicio un momento",
+    paper: "Estamos cambiando el papel. ¡Volvemos enseguida!",
+    printer: "Estamos revisando la impresora. ¡Volvemos enseguida!"
+  },
   paywall: {
+    perPhoto: "por foto",
+    total: "total {price}",
+    paidTitle: "¡Pagado!",
+    paidSub: "Estamos creando tu retrato",
     title: '¿Listo para la transformación?',
     scanToPay: "Escanea para pagar",
     terminalDown: 'El datáfono no está disponible ahora, paga con tu móvil.',

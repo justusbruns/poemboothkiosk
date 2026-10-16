@@ -5,6 +5,8 @@ import { updatePrintContainerVisibility } from './result/print.js';
 import { showQRCode } from './result/qr.js';
 import { showResultCameraBackground, updateResultActionLabel, updateResultPaymentUI } from './result/ui.js';
 import { showScreen } from './screens.js';
+import { createStarfield } from './starfield.js';
+import { playReveal } from './result/reveal.js';
 import { elements, screens, state } from './state.js';
 import { showNotification, updateProgress } from './ui.js';
 import { handlePaidGenerationFailure } from './retry.js';
@@ -13,6 +15,20 @@ import { handlePaidGenerationFailure } from './retry.js';
 // generation; opts.retake: the free second generation of that order;
 // opts.retriedSamePhoto / opts.newPhoto: retries after a failed paid
 // generation (see retry.js).
+// Stars keep flying on the processing screen after a payment (theater)
+let processingStars = null;
+function startProcessingStars() {
+  const canvas = document.getElementById('processing-stars');
+  if (!canvas) return;
+  if (!processingStars) processingStars = createStarfield(canvas, { count: 140 });
+  processingStars.setSpeed(2.2, true);
+  processingStars.start();
+}
+
+function stopProcessingStars() {
+  if (processingStars) processingStars.stop();
+}
+
 export async function processPhoto(opts = {}) {
   const orderId = opts.orderId || null;
   try {
@@ -27,25 +43,31 @@ export async function processPhoto(opts = {}) {
 
     console.log('[RENDERER] Processing photo, length:', state.currentPhoto.length);
 
-    // Show processing screen with captured photo ("theater" escalation after a payment)
-    if (screens.processing) screens.processing.classList.toggle('theater', !!orderId);
-    showScreen('processing');
-
-    // Display the captured photo full-screen
-    elements.processingPhoto.src = state.currentPhoto;
-
-    // Start loading text rotation
-    startLoadingTextRotation();
-
-    // Initialize and play Lottie animation
-    console.log('[RENDERER] About to call initializeLottieAnimation()');
-    try {
-      await initializeLottieAnimation();
-      console.log('[RENDERER] Lottie animation initialization complete');
-    } catch (lottieError) {
-      console.error('[RENDERER] Lottie animation failed:', lottieError);
-      // Continue even if animation fails
-    }
+    // opts.gate: the paywall's "Paid!" moment is still on screen. The upload
+    // and generation start right away; the processing screen (and the result)
+    // only take over once the gate opens.
+    const gate = opts.gate || null;
+    state.revealGate = gate;
+    const enterProcessing = async () => {
+      if (state.generate && state.generate.resultShown) return; // result came first
+      // Show processing screen with captured photo ("theater" escalation after a payment)
+      if (screens.processing) screens.processing.classList.toggle('theater', !!orderId);
+      showScreen('processing');
+      // Display the captured photo full-screen
+      elements.processingPhoto.src = state.currentPhoto;
+      if (orderId) startProcessingStars();
+      // Start loading text rotation
+      startLoadingTextRotation();
+      // Initialize and play Lottie animation
+      try {
+        await initializeLottieAnimation();
+      } catch (lottieError) {
+        console.error('[RENDERER] Lottie animation failed:', lottieError);
+        // Continue even if animation fails
+      }
+    };
+    if (gate) gate.then(enterProcessing);
+    else await enterProcessing();
 
     updateProgress('Sending photo to AI...', 10);
 
@@ -86,6 +108,8 @@ export async function processPhoto(opts = {}) {
     } finally {
       state.generateHandler = null;
     }
+    // Failures and results below may only show once the paid moment is over
+    if (gate) await gate;
 
     const g = state.generate;
     // Pay-first: the poem was written but its picture could not be rendered,
@@ -118,6 +142,9 @@ export async function processPhoto(opts = {}) {
 
   } catch (error) {
     console.error('[RENDERER] Process error:', error);
+    // A failure during the paid moment shows once that moment is over
+    if (opts.gate) await Promise.resolve(opts.gate).catch(() => {});
+    stopProcessingStars();
     state.generateHandler = null;
     state.isProcessing = false;  // Explicit reset on error
     destroyLottieAnimation();    // Clean up animation
@@ -243,7 +270,13 @@ export function handleGenerateEvent(evt) {
       console.log(`[RENDERER] Poem complete (${g.poemStream ? g.poemStream.text.length : 0} chars), +${Date.now() - g.startedAt}ms`);
       updateProgress('Creating artwork...', 70);
       if (g.poemStream && g.poemStream.text) {
-        showPoemWithTypingEffect(g.poemStream.text);
+        const text = g.poemStream.text;
+        Promise.resolve(state.revealGate).then(() => {
+          if (state.generate !== g) return;
+          g.resultShown = true;
+          stopProcessingStars();
+          showPoemWithTypingEffect(text);
+        });
       }
       break;
 
@@ -445,6 +478,11 @@ export async function processImageGeneration(response) {
     state.currentPrintBuffer = imageBuffer;
     state.lastResultImage = imageDataUrl; // retake "keep" card
 
+    // The paid moment may still be on screen: wait for it
+    if (state.revealGate) await state.revealGate;
+    if (state.generate) state.generate.resultShown = true;
+    stopProcessingStars();
+
     // Destroy loading animation
     destroyLottieAnimation();
 
@@ -485,6 +523,7 @@ export async function processImageGeneration(response) {
       // The watermark lives inside the wrap so overflow:hidden trims anything past the image
       if (elements.resultWatermark) wrap.appendChild(elements.resultWatermark);
       elements.poemText.appendChild(wrap);
+      playReveal(); // TADAAA
 
       // Apply paid-mode extras (watermark) now that it sits inside the image wrap
       updateResultPaymentUI();

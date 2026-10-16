@@ -105,6 +105,14 @@
 
   <!-- Main Photo Booth Screen -->
   <div id="booth-screen" class="screen">
+    <!-- Paid event + printer offline / out of paper: no new guests (outOfService.js) -->
+    <div id="out-of-service" class="out-of-service" style="display: none;" role="status" aria-live="polite">
+      <div class="oos-card">
+        <svg class="oos-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" d="M6.72 13.83c-.24.03-.48.06-.72.1m.72-.1a42.4 42.4 0 0 1 10.56 0m-10.56 0L6.34 18m10.94-4.17c.24.03.48.06.72.1m-.72-.1L17.66 18m0 0 .23 2.5A1.13 1.13 0 0 1 16.77 21.7H7.23a1.13 1.13 0 0 1-1.12-1.2L6.34 18m11.32 0h1.09A2.25 2.25 0 0 0 21 15.75V9.46c0-1.08-.77-2.01-1.84-2.2a48.4 48.4 0 0 0-1.4-.2M6.34 18H5.25A2.25 2.25 0 0 1 3 15.75V9.46c0-1.08.77-2.01 1.84-2.2.47-.08.93-.14 1.4-.2m11.52 0a48.4 48.4 0 0 0-11.52 0m11.52 0V3.38c0-.62-.5-1.13-1.13-1.13H7.37c-.62 0-1.13.5-1.13 1.13v3.68"/></svg>
+        <h2 id="oos-title" class="oos-title">Temporarily out of order</h2>
+        <p id="oos-text" class="oos-text">The paper is being replaced. Back in a moment!</p>
+      </div>
+    </div>
     <div class="booth-container">
       <!-- Camera View (mirrored for display) -->
       <div class="camera-container">
@@ -171,28 +179,47 @@
   <div id="paywall-screen" class="screen">
     <img id="paywall-photo" class="paywall-photo" src="" alt="" />
     <div id="paywall-energy" class="paywall-energy" aria-hidden="true">
+      <!-- Stars flying towards the guest (starfield.js) -->
+      <canvas id="paywall-stars" class="stars-canvas"></canvas>
       <div class="energy-ring"></div>
       <div class="energy-ring energy-ring--2"></div>
-      <div class="energy-scan"></div>
-      <div class="energy-particles"></div>
     </div>
     <div class="paywall-overlay">
-      <h1 id="paywall-title" class="paywall-title">Ready for the transformation?</h1>
-      <div class="paywall-price-block">
-        <div id="paywall-price" class="paywall-price">€ 5</div>
-        <div id="paywall-qty" class="paywall-qty">1 print</div>
+      <!-- The style the guest picked, as a small round thumbnail -->
+      <div id="paywall-style" class="style-chip" style="display: none;">
+        <span class="style-chip-img"></span>
+        <span class="style-chip-name"></span>
       </div>
-      <!-- QR fallback (Mollie) when the card terminal is unavailable -->
-      <div id="paywall-qr" class="paywall-qr" style="display: none;"></div>
-      <p id="paywall-tap" class="paywall-tap">Tap your card to unleash the AI</p>
-      <p id="paywall-hint" class="paywall-hint">With a group? Turn the knob for extra prints</p>
+      <h1 id="paywall-title" class="paywall-title">Ready for the transformation?</h1>
+      <!-- Number of prints: a knob carousel of price cards (carousel.js) -->
+      <div id="paywall-carousel" class="paywall-carousel"></div>
+      <p id="paywall-hint" class="knob-hint"></p>
+      <!-- Terminal: "tap your card". Terminal unavailable: a compact QR (Mollie)
+           with the scan text next to it, so the photo stays visible -->
+      <div class="paywall-pay-row">
+        <div id="paywall-qr" class="paywall-qr" style="display: none;"></div>
+        <p id="paywall-tap" class="paywall-tap">Tap your card to unleash the AI</p>
+      </div>
       <p id="paywall-status" class="paywall-status"></p>
+    </div>
+    <!-- Payment approved: a moment of joy while the portrait is already being made -->
+    <div class="paywall-success" aria-live="polite">
+      <div class="success-check">
+        <svg viewBox="0 0 120 120" aria-hidden="true">
+          <circle class="success-circle" cx="60" cy="60" r="52" />
+          <path class="success-tick" d="M37 62 L53 78 L85 43" />
+        </svg>
+      </div>
+      <h2 id="paywall-success-title" class="success-title">Paid!</h2>
+      <p id="paywall-success-sub" class="success-sub">Your portrait is being made</p>
     </div>
   </div>
 
   <!-- Processing Screen (full-screen photo with loading) -->
   <div id="processing-screen" class="screen">
     <img id="processing-photo" class="processing-photo" src="" alt="" />
+    <!-- Theater (after a payment): the stars keep flying while the AI works -->
+    <canvas id="processing-stars" class="stars-canvas processing-stars"></canvas>
     <div class="loading-spinner-overlay">
       <div id="lottie-animation" class="lottie-container"></div>
       <p id="loading-status-text" class="loading-status-text"></p>

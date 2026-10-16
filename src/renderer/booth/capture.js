@@ -10,6 +10,7 @@ import { updateBoothBrandVisibility } from '../screens.js';
 import { elements, state } from '../state.js';
 import { showError } from '../ui.js';
 import { setLedPhase } from '../leds.js';
+import { outOfServiceReason, updateOutOfService } from '../outOfService.js';
 
 // =============================================================================
 // Photo Capture Flow
@@ -187,6 +188,13 @@ export async function handleCapture() {
 
   if (state.isProcessing) {
     console.log('[RENDERER] Already processing, ignoring capture request');
+    return;
+  }
+
+  // Paid event and the printer cannot print: no new guests until it is back
+  if (outOfServiceReason()) {
+    console.log('[RENDERER] Booth out of order, ignoring capture request');
+    updateOutOfService();
     return;
   }
 

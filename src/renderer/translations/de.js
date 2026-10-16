@@ -103,7 +103,16 @@ export const de = {
     errorBody: "Beim Erstellen deines Porträts ist etwas schiefgelaufen.",
     cta: "Drück den Knopf für ein neues Foto. Du hast schon bezahlt."
   },
+  outOfService: {
+    title: "Vorübergehend außer Betrieb",
+    paper: "Das Papier wird gewechselt. Gleich geht es weiter!",
+    printer: "Der Drucker wird kurz überprüft. Gleich geht es weiter!"
+  },
   paywall: {
+    perPhoto: "pro Foto",
+    total: "gesamt {price}",
+    paidTitle: "Bezahlt!",
+    paidSub: "Dein Porträt wird jetzt erstellt",
     title: 'Bereit für die Verwandlung?',
     scanToPay: "Scannen zum Bezahlen",
     terminalDown: 'Das Kartenterminal ist gerade nicht verfügbar, bezahle mit deinem Handy.',

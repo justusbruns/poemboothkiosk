@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   printerPrint: (imageBuffer, options) => ipcRenderer.invoke('printer:print', imageBuffer, options),
   printerGetStatus: () => ipcRenderer.invoke('printer:get-status'),
   onPrinterStatusChange: (callback) => ipcRenderer.on('printer:statusChange', (event, status) => callback(status)),
+  onPrinterSupply: (callback) => ipcRenderer.on('printer:supply', (event, supply) => callback(supply)),
 
   // Hardware Events (listen to events from main process)
   onButtonPress: (callback) => ipcRenderer.on('hardware:buttonPress', callback),

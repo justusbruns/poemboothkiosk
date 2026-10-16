@@ -2,6 +2,7 @@ import { destroyLottieAnimation } from '../lottie.js';
 import { updatePrintContainerVisibility } from './print.js';
 import { hideResultCameraBackground, updateResultActionLabel, updateResultPaymentUI } from './ui.js';
 import { showScreen } from '../screens.js';
+import { playReveal } from './reveal.js';
 import { elements, state } from '../state.js';
 
 // =============================================================================
@@ -180,6 +181,7 @@ export function showPoemWithTypingEffect(poemTextOrStream) {
 
   // Show result screen
   showScreen('result');
+  playReveal();
 
   // Display blurred photo background (ensure visible in case hidden from image generation)
   hideResultCameraBackground();

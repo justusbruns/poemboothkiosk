@@ -103,7 +103,16 @@ export const it = {
     errorBody: "Qualcosa è andato storto durante la creazione del ritratto.",
     cta: "Premi il pulsante per una nuova foto. Hai già pagato."
   },
+  outOfService: {
+    title: "Momentaneamente fuori servizio",
+    paper: "Stiamo sostituendo la carta. Torniamo subito!",
+    printer: "Stiamo controllando la stampante. Torniamo subito!"
+  },
   paywall: {
+    perPhoto: "a foto",
+    total: "totale {price}",
+    paidTitle: "Pagato!",
+    paidSub: "Stiamo creando il tuo ritratto",
     title: 'Pronto per la trasformazione?',
     scanToPay: "Scansiona per pagare",
     terminalDown: 'Il terminale di pagamento non è disponibile, paga con il telefono.',

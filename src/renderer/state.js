@@ -27,6 +27,7 @@ export const state = {
   lottieAnimation: null,
   loadingLottieAnimation: null,
   printerStatus: { available: false, status: 'unknown' },
+  printerSupply: null,        // last DNP supply reading (paper, jam, cover) from main
   cameraRotation: 0, // Camera rotation from backend config (0, 90, 180, 270)
   cameraResolution: null,    // { width, height, fps, label } actually delivered by the camera
   cameraMaxResolution: null, // { width, height } the track reports it can do
@@ -99,8 +100,7 @@ export const elements = {
   paywallPhoto: document.getElementById('paywall-photo'),
   paywallEnergy: document.getElementById('paywall-energy'),
   paywallTitle: document.getElementById('paywall-title'),
-  paywallPrice: document.getElementById('paywall-price'),
-  paywallQty: document.getElementById('paywall-qty'),
+  paywallCarousel: document.getElementById('paywall-carousel'),
   paywallTap: document.getElementById('paywall-tap'),
   paywallQr: document.getElementById('paywall-qr'),
   paywallHint: document.getElementById('paywall-hint'),

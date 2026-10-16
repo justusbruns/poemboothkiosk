@@ -10,6 +10,7 @@ import { triggerGlassWipe } from '../result/transitions.js';
 import { showScreen } from '../screens.js';
 import { elements, state } from '../state.js';
 import { dismissNotification } from '../ui.js';
+import { setPrinterSupply } from '../outOfService.js';
 
 // =============================================================================
 // Hardware Event Listeners
@@ -131,6 +132,11 @@ export function setupEventListeners() {
     console.log('[PRINTER] Status change received:', status);
     updatePrinterStatus(status);
   });
+
+  // Paper / jam / cover readings: out-of-order screen at paid events
+  if (window.electronAPI.onPrinterSupply) {
+    window.electronAPI.onPrinterSupply((supply) => setPrinterSupply(supply));
+  }
 
   // Get initial printer status with retry for race condition protection
   async function getInitialPrinterStatus(retries = 3, delay = 500) {

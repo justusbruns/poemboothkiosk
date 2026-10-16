@@ -4,6 +4,7 @@ import { resetStyleCoverflow } from './booth/coverflow.js';
 import { cancelTypingAnimation } from './result/poem.js';
 import { elements, screens, state } from './state.js';
 import { setLedPhaseForScreen } from './leds.js';
+import { updateOutOfService } from './outOfService.js';
 
 // Knob/button routing for modal setup screens (update, language). The IPC
 // listeners are registered exactly once (see the App Lifecycle section);
@@ -27,6 +28,7 @@ export function knobDirection(data) {
 
 export function showScreen(screenName) {
   setLedPhaseForScreen(screenName);
+  if (screenName === 'booth') setTimeout(updateOutOfService, 0); // after state.screen is set
 
   // Cancel typing animation when leaving result screen
   if (state.screen === 'result' && screenName !== 'result') {
