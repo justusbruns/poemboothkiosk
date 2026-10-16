@@ -22,7 +22,7 @@ const solid = (col, bri, transition = 7) => ({ on: true, bri, transition, seg: {
 
 const LED_PHASES = {
   // Booth screen: slow breathing to draw people in
-  idle: { on: true, bri: 150, transition: 10, seg: { fx: 2, sx: 60, col: [WARM, OFF] } },
+  idle: { on: true, bri: 150, transition: 10, seg: { fx: 2, sx: 20, col: [WARM, OFF] } },
   // Countdown: warm and bright, lights the face
   countdown: solid([255, 210, 160, 255], 230, 5),
   // The moment of the photo
