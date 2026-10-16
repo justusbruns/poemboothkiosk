@@ -499,8 +499,34 @@ class ApiClient {
       console.log('[API] - Equipment:', response.equipment_name);
       console.log('[API] - Styles:', response.style_configs?.length || 0);
 
+      // The booth moved to another hub: its token still names the old hub, and
+      // hub-scoped data (default styles) is read per hub. Refresh the session
+      // so the next requests carry the new hub.
+      const hubId = response && response.hub && response.hub.id;
+      if (this.authMode === 'device_token' && hubId && this.credentials && this.credentials.hub_id && hubId !== this.credentials.hub_id) {
+        console.log('[API] Hub changed', this.credentials.hub_id, '→', hubId, '- refreshing the device session');
+        this.credentials = { ...this.credentials, hub_id: hubId };
+        this.credentialStore.save(this.credentials);
+        this.refreshSession().catch((e) => console.warn('[API] Session refresh after hub change failed:', e.message));
+      }
+
       return response;
     } catch (error) {
+      // Not found / no styles right after a move to another hub: refresh the
+      // session once (new hub in the token) and ask again
+      if (!this.configRetried && this.authMode === 'device_token' && /HTTP (404|424)/.test(error && error.message || '')) {
+        this.configRetried = true;
+        try {
+          console.log('[API] Config', (error.message || '').slice(0, 12), '- refreshing the device session and trying again');
+          await this.refreshSession();
+          return await this.getKioskConfig();
+        } catch (retryError) {
+          console.error('[API] Config fetch error:', retryError);
+          throw retryError;
+        } finally {
+          this.configRetried = false;
+        }
+      }
       console.error('[API] Config fetch error:', error);
       throw error;
     }
