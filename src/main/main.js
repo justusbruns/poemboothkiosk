@@ -648,6 +648,9 @@ ipcMain.handle('get-flags', async () => {
 function createApiClient() {
   return new ApiClient({
     appVersion: app.getVersion(),
+    // LED controller on USB right now (reported with the printer heartbeat, so
+    // the customer portal and driver app can offer the light colour)
+    ledsConnected: () => (ledService ? ledService.status().connected : false),
     onAuthInvalid: (reason) => {
       console.warn('[MAIN] Device credentials invalid:', reason);
       deviceConfig = null;

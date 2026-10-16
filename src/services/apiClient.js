@@ -55,6 +55,7 @@ class ApiClient {
 
     this.appVersion = options.appVersion || '1.0.0';
     this.onAuthInvalid = typeof options.onAuthInvalid === 'function' ? options.onAuthInvalid : null;
+    this.ledsConnected = typeof options.ledsConnected === 'function' ? options.ledsConnected : null;
     this.credentialStore = options.credentialStore || new CredentialStore({ envName: this.envName });
 
     // 'none' | 'device_token' | 'certificate'
@@ -813,6 +814,10 @@ class ApiClient {
         connected: !!connected,
         status: status || 'unknown'
       };
+      // LED controller (WLED) on USB: customer and driver may then pick its colour
+      if (typeof this.ledsConnected === 'function') {
+        try { body.leds_connected = !!this.ledsConnected(); } catch (e) { /* never block the heartbeat */ }
+      }
       // Only include supply fields when we have a fresh, valid reading.
       if (supplies && supplies.ok) {
         body.sheets_remaining = supplies.sheets_remaining;
