@@ -11,7 +11,7 @@
 // everything is a no-op.
 
 const { SerialPort } = require('serialport');
-const { LED_PHASES } = require('./ledPhases');
+const { LED_PHASES, idleState } = require('./ledPhases');
 
 const BAUD = 115200;
 const BOOT_MS = 2500;   // ESP32 restarts when the port opens
@@ -29,6 +29,7 @@ class LedService {
     this.port = null;
     this.version = null;
     this.phase = null;
+    this.idleColor = null; // '#rrggbb' from the dashboard, null = default
     this.timer = null;
     this.scanning = false;
     this.stopped = false;
@@ -49,14 +50,22 @@ class LedService {
   }
 
   status() {
-    return { connected: !!(this.port && this.port.isOpen), path: this.port ? this.port.path : null, version: this.version, phase: this.phase };
+    return { connected: !!(this.port && this.port.isOpen), path: this.port ? this.port.path : null, version: this.version, phase: this.phase, idleColor: this.idleColor };
   }
 
   setPhase(phase) {
     if (!LED_PHASES[phase]) return;
     if (phase === this.phase) return;
     this.phase = phase;
-    this.write(LED_PHASES[phase]);
+    this.write(phase === 'idle' ? idleState(this.idleColor) : LED_PHASES[phase]);
+  }
+
+  // Colour at rest from the kiosk config; shown right away when the booth is idle
+  setIdleColor(hex) {
+    const color = typeof hex === 'string' && /^#[0-9a-f]{6}$/i.test(hex) ? hex.toLowerCase() : null;
+    if (color === this.idleColor) return;
+    this.idleColor = color;
+    if (this.phase === 'idle') this.write(idleState(color));
   }
 
   write(state) {

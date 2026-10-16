@@ -45,4 +45,21 @@ const LED_PHASES = {
   setup: solid(WARM, 40, 10),
 };
 
-module.exports = { LED_PHASES };
+// Colour at rest chosen in the dashboard (config.leds.idle_color, '#rrggbb'):
+// same breathing as 'idle', in that colour. The part all three channels share
+// goes to the white LEDs, so white is real white and not a mix of R+G+B.
+function hexToRgbw(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+  if (!m) return null;
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h, 16));
+  const w = Math.min(r, g, b);
+  return [r - w, g - w, b - w, w];
+}
+
+function idleState(hex) {
+  const col = hexToRgbw(hex);
+  if (!col) return LED_PHASES.idle;
+  return { ...LED_PHASES.idle, seg: { ...LED_PHASES.idle.seg, col: [col, OFF] } };
+}
+
+module.exports = { LED_PHASES, idleState, hexToRgbw };

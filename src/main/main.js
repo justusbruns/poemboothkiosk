@@ -901,6 +901,8 @@ ipcMain.handle('api:get-config', async () => {
       throw new Error('API client not initialized');
     }
     kioskConfig = await apiClient.getKioskConfig();
+    // LED colour at rest chosen in the dashboard (null = default warm white)
+    if (ledService) ledService.setIdleColor(kioskConfig && kioskConfig.leds ? kioskConfig.leds.idle_color : null);
     // Listen for pokes on this booth's topic (no-op when unchanged / absent)
     try { realtimeService.configure(kioskConfig && kioskConfig.realtime); } catch (e) {
       console.warn('[MAIN] Realtime setup failed (polling continues):', e.message);
