@@ -1417,6 +1417,7 @@ h1, h2, h3, h4, h5, h6, p {
 .result-image-wrap {
   position: relative;
   display: inline-block;
+  max-width: 100%;
   overflow: hidden;
   border-radius: 14px;
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
@@ -1428,7 +1429,9 @@ h1, h2, h3, h4, h5, h6, p {
 
 .result-image-wrap > img {
   display: block;
-  max-width: 78vw;
+  /* never wider than the overlay (80% of the screen minus its padding), so the
+     portrait is scaled down instead of running past the right edge */
+  max-width: min(78vw, calc(80vw - 3rem));
   max-height: calc(90vh - 360px);
   width: auto;
   height: auto;
