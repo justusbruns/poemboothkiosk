@@ -49,6 +49,12 @@ export function calculatePoemFontSize(poemText) {
   const measure = document.createElement('canvas').getContext('2d');
   const widthOf = (text, size) => { measure.font = `${size}px 'EB Garamond', Georgia, 'Times New Roman', serif`; return measure.measureText(text).width; };
 
+  // Verse (several short lines) keeps every line whole; prose (a roast: one
+  // or two long lines) may wrap and only has to fit the height
+  const nonEmpty = poemText.split('
+').filter((l) => l.trim());
+  const isVerse = nonEmpty.length >= 2 && nonEmpty.every((l) => l.length <= 70);
+
   // Try different font sizes, starting large and working down
   let fontSize = START_FONT_SIZE;
   let bestFit = MIN_FONT_SIZE;
@@ -93,7 +99,7 @@ export function calculatePoemFontSize(poemText) {
     const linesWrapped = wrappedLines.length > lines.length;
 
     // Check if it fits
-    if (totalHeight <= availableHeight && (!linesWrapped || fontSize <= MIN_FONT_SIZE)) {
+    if (totalHeight <= availableHeight && (!isVerse || !linesWrapped || fontSize <= MIN_FONT_SIZE)) {
       bestFit = fontSize;
       console.log(`[RENDERER] ✓ Font size ${fontSize}px fits!`);
       break; // Found the largest size that fits
