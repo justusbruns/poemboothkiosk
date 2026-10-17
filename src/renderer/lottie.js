@@ -105,8 +105,16 @@ export function destroyLottieAnimation() {
 // Loading Text Rotation (Processing Screen)
 // =============================================================================
 
+// Image styles get the painter lines, poems and roasts the writer lines
+function loadingMessages() {
+  const style = state.availableStyles && state.availableStyles[state.currentStyleIndex];
+  const image = !!(style && style.style_type === 'image');
+  const list = image ? t('processing.loadingMessages') : t('processing.loadingMessagesPoem');
+  return Array.isArray(list) ? list : t('processing.loadingMessages');
+}
+
 export function startLoadingTextRotation() {
-  const messages = t('processing.loadingMessages');
+  const messages = loadingMessages();
   if (!messages || !Array.isArray(messages)) {
     console.log('[LOADING] No loading messages found in translations');
     return;
@@ -130,7 +138,7 @@ export function startLoadingTextRotation() {
 }
 
 export function updateLoadingText() {
-  const messages = t('processing.loadingMessages');
+  const messages = loadingMessages();
   if (elements.loadingStatusText && messages && Array.isArray(messages)) {
     // Trigger animation restart by removing and re-adding
     elements.loadingStatusText.style.animation = 'none';
