@@ -47,8 +47,14 @@ class RealtimeService {
         if (status === 'SUBSCRIBED') this.log.log(`[REALTIME] listening on ${realtime.topic}`);
         else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
           this.log.warn(`[REALTIME] ${status}${err ? ': ' + err.message : ''} (polling continues; client retries)`);
-        }
+        } else this.log.log(`[REALTIME] channel ${status}`);
       });
+    // The socket itself: a silent drop shows up here, and the client reconnects
+    try {
+      this.client.onOpen(() => this.log.log('[REALTIME] socket open'));
+      this.client.onClose((e) => this.log.warn('[REALTIME] socket closed' + (e && e.code ? ' (' + e.code + ')' : '') + ', reconnecting'));
+      this.client.onError((e) => this.log.warn('[REALTIME] socket error:', (e && e.message) || String(e)));
+    } catch (e) { /* older client without these hooks */ }
   }
 
   stop() {

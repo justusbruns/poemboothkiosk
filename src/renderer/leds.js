@@ -22,5 +22,6 @@ export function setLedPhase(phase) {
 export function setLedPhaseForScreen(screenName) {
   // Picking a retake style happens on the booth screen, but the portrait is still "on"
   if (screenName === 'booth' && state.retakeMode) return setLedPhase('reveal');
+  if (screenName === 'booth' && state.closed) return setLedPhase('off');
   setLedPhase(SCREEN_PHASES[screenName] || 'setup');
 }

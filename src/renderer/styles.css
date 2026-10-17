@@ -2334,6 +2334,15 @@ h1, h2, h3, h4, h5, h6, p {
   backdrop-filter: blur(10px);
 }
 
+.closed-screen {
+  background: rgba(0, 0, 0, 0.86);
+}
+
+.closed-screen .oos-icon {
+  animation: none;
+  opacity: 0.7;
+}
+
 .oos-card {
   display: flex;
   flex-direction: column;

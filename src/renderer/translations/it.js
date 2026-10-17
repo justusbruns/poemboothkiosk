@@ -158,6 +158,13 @@ export const it = {
     pressButton: "Premi il pulsante per riprovare",
     autoRetry: "Riproviamo da soli tra {s} secondi"
   },
+  closed: {
+    title: "Chiuso",
+    todayAt: "Riapriamo oggi alle {time}",
+    tomorrowAt: "Riapriamo domani alle {time}",
+    dayAt: "Riapriamo {day} alle {time}",
+    noHours: "A presto!"
+  },
   paywall: {
     perPhoto: "a foto",
     total: "totale {price}",

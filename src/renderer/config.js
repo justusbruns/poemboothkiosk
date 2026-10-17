@@ -4,6 +4,10 @@ import { buildStyleCoverflow } from './booth/coverflow.js';
 import { applyBookingWifi } from './setup/wifi.js';
 import { elements, state } from './state.js';
 import { updateOutOfService } from './outOfService.js';
+import { updateClosed } from './closed.js';
+import { refreshBoothBrand } from './booth/brand.js';
+import { loadTranslations } from './translations/index.js';
+import { updateUIText } from './app.js';
 
 // =============================================================================
 // Config Polling (Auto-update configs from backend)
@@ -86,6 +90,21 @@ export async function checkForConfigUpdates() {
         if (stylesChanged) buildStyleCoverflow();
       }
 
+      // Language of the booth changed: all texts follow at once
+      if (newConfig.kiosk_language && newConfig.kiosk_language !== oldConfig.kiosk_language) {
+        console.log('[CONFIG] Language changed:', oldConfig.kiosk_language, '→', newConfig.kiosk_language);
+        loadTranslations(newConfig.kiosk_language);
+        updateUIText();
+        buildStyleCoverflow(); // card labels ('Original') in the new language
+      }
+
+      // Branding at the top of the booth (hub logo / white label) can change live
+      if (JSON.stringify(oldConfig.hub_branding) !== JSON.stringify(newConfig.hub_branding) ||
+          oldConfig.branding_enabled !== newConfig.branding_enabled) {
+        console.log('[CONFIG] Booth branding changed');
+        refreshBoothBrand();
+      }
+
       // Update terms notice (enabled flag / content can change live)
       updateTermsNotice();
 
@@ -98,6 +117,7 @@ export async function checkForConfigUpdates() {
       }
 
       updateOutOfService();
+      updateClosed(); // opening hours may have changed
       console.log('[CONFIG] Config updates applied successfully');
     } else {
       console.log('[CONFIG] No config changes detected');

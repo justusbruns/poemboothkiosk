@@ -158,6 +158,13 @@ export const de = {
     pressButton: "Drücke den Knopf, um es erneut zu versuchen",
     autoRetry: "Wir versuchen es in {s} Sekunden automatisch erneut"
   },
+  closed: {
+    title: "Geschlossen",
+    todayAt: "Heute wieder offen um {time}",
+    tomorrowAt: "Morgen wieder offen um {time}",
+    dayAt: "Wieder offen am {day} um {time}",
+    noHours: "Bis bald!"
+  },
   paywall: {
     perPhoto: "pro Foto",
     total: "gesamt {price}",

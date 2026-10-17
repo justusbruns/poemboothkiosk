@@ -27,7 +27,8 @@ export const state = {
   lottieAnimation: null,
   loadingLottieAnimation: null,
   printerStatus: { available: false, status: 'unknown' },
-  printerSupply: null,        // last DNP supply reading (paper, jam, cover) from main
+  printerSupply: null,
+  closed: false,              // operator location outside opening hours (closed.js)        // last DNP supply reading (paper, jam, cover) from main
   cameraRotation: 0, // Camera rotation from backend config (0, 90, 180, 270)
   cameraResolution: null,    // { width, height, fps, label } actually delivered by the camera
   cameraMaxResolution: null, // { width, height } the track reports it can do

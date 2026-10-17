@@ -16,6 +16,7 @@ import { applyBookingWifi, initializeWiFiSetup, scanForWiFiQR } from './setup/wi
 import { elements, state } from './state.js';
 import { formatCameraResolution, showError, updateStatus } from './ui.js';
 import { handleUpdateInstall, showUpdateScreen } from './update.js';
+import { startClosedWatch } from './closed.js';
 
 // =============================================================================
 // UI Text Update (for i18n)
@@ -48,6 +49,7 @@ export function updateUIText() {
   // Booth screen - turn-knob hint + (re)start the rotating hero CTA in the active language
   updateActionLabel();
   startCtaRotation();
+  startClosedWatch();
 
   // Booth screen - terms notice text (keep in sync with the active language)
   updateTermsNotice();

@@ -28,6 +28,12 @@ export function getHubBranding() {
 //  - else → the default Poem Booth animated logo + poembooth.com
 // Runs once, the first time the booth screen appears.
 export let boothBrandInitialized = false;
+
+// Config refresh with other branding: build the top slot again
+export function refreshBoothBrand() {
+  boothBrandInitialized = false;
+  setupBoothBrand();
+}
 export function setupBoothBrand() {
   if (boothBrandInitialized) return;
   if (!elements.boothBrand) return;

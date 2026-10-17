@@ -186,6 +186,13 @@ export const nl = {
     pressButton: "Druk op de knop om het opnieuw te proberen",
     autoRetry: "We proberen het over {s} seconden vanzelf opnieuw"
   },
+  closed: {
+    title: "Gesloten",
+    todayAt: "Vandaag weer open om {time}",
+    tomorrowAt: "Morgen weer open om {time}",
+    dayAt: "Weer open op {day} om {time}",
+    noHours: "Tot snel!"
+  },
   paywall: {
     perPhoto: "per foto",
     total: "totaal {price}",

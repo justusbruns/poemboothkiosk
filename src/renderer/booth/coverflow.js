@@ -129,7 +129,7 @@ function attractSleep(ms, gen) {
 }
 
 function attractAllowed() {
-  return state.screen === 'booth' && !state.isProcessing && !state.isCapturing && state.availableStyles.length > 0;
+  return state.screen === 'booth' && !state.isProcessing && !state.isCapturing && !state.closed && state.availableStyles.length > 0;
 }
 
 function centreCard() {

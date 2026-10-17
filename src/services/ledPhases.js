@@ -43,6 +43,8 @@ const LED_PHASES = {
   error: { on: true, bri: 120, transition: 10, seg: { fx: 2, sx: 40, col: [[255, 110, 0, 0], OFF] } },
   // Setup screens (language, WiFi, pairing, update): calm and dim
   setup: solid(WARM, 40, 10),
+  // Closed outside opening hours (operator location)
+  off: { on: false, transition: 20 },
 };
 
 // Colour at rest chosen in the dashboard (config.leds.idle_color, '#rrggbb'):

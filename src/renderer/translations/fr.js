@@ -158,6 +158,13 @@ export const fr = {
     pressButton: "Appuie sur le bouton pour réessayer",
     autoRetry: "Nouvel essai automatique dans {s} secondes"
   },
+  closed: {
+    title: "Fermé",
+    todayAt: "Réouverture aujourd'hui à {time}",
+    tomorrowAt: "Réouverture demain à {time}",
+    dayAt: "Réouverture {day} à {time}",
+    noHours: "À bientôt !"
+  },
   paywall: {
     perPhoto: "par photo",
     total: "total {price}",

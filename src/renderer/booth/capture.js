@@ -11,6 +11,7 @@ import { elements, state } from '../state.js';
 import { showError } from '../ui.js';
 import { setLedPhase } from '../leds.js';
 import { outOfServiceReason, updateOutOfService } from '../outOfService.js';
+import { isClosedNow } from '../closed.js';
 
 // =============================================================================
 // Photo Capture Flow
@@ -188,6 +189,12 @@ export async function handleCapture() {
 
   if (state.isProcessing) {
     console.log('[RENDERER] Already processing, ignoring capture request');
+    return;
+  }
+
+  // Outside opening hours (operator location): the button does nothing
+  if (isClosedNow()) {
+    console.log('[RENDERER] Closed, ignoring capture request');
     return;
   }
 
