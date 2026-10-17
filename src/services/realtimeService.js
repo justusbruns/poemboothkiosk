@@ -47,11 +47,14 @@ class RealtimeService {
 
   connect() {
     const realtime = this.realtime;
-    const endpoint = realtime.url.replace(/^http/, 'ws').replace(/\/+$/, '') + '/realtime/v1';
+    // trim: an env value with a stray newline must not break the URL or the key
+    const url = String(realtime.url).trim();
+    const apikey = String(realtime.anon_key).trim();
+    const endpoint = url.replace(/^http/, 'ws').replace(/\/+$/, '') + '/realtime/v1';
     this.joined = false;
     this.attemptAt = Date.now();
     this.client = new RealtimeClient(endpoint, {
-      params: { apikey: realtime.anon_key },
+      params: { apikey },
       heartbeatIntervalMs: 25000,
       reconnectAfterMs: (tries) => Math.min(30000, 1000 * Math.pow(2, Math.min(tries, 5)))
     });
