@@ -231,7 +231,7 @@ export function updateActionLabel() {
   // The small "turn the knob" hint only appears when there's more than one style
   if (elements.styleHint) {
     elements.styleHint.textContent = t('booth.turnKnob');
-    elements.styleHint.style.display = state.availableStyles.length > 1 ? 'block' : 'none';
+    elements.styleHint.style.display = 'none'; // the big action text above the row says it
   }
 }
 

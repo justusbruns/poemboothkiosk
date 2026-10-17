@@ -393,7 +393,7 @@ function moveChoice(direction) {
 }
 
 function knobHint(text) {
-  return text ? `<span class="knob-arrow left">‹</span> ${text} <span class="knob-arrow right">›</span>` : '';
+  return text || '';
 }
 
 function closeChoice() {

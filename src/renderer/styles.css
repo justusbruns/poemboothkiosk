@@ -551,11 +551,11 @@ h1, h2, h3, h4, h5, h6, p {
   position: absolute;
   width: 100%;
   height: 100%;
-  border: 2px solid rgba(255, 255, 255, 0.55);
+  border: 0.55vh solid rgba(255, 255, 255, 0.6);
   border-radius: 50%;
   opacity: 0;
   animation: pulse 5.4s cubic-bezier(0.33, 0, 0.2, 1) infinite;
-  will-change: transform, opacity;
+  will-change: transform, opacity, border-width;
 }
 
 .pulse-ring:nth-child(2) {
@@ -567,10 +567,11 @@ h1, h2, h3, h4, h5, h6, p {
 }
 
 @keyframes pulse {
-  0%   { transform: scale(0.45); opacity: 0; }
-  20%  { opacity: 0.8; }
-  70%  { opacity: 0.25; }
-  100% { transform: scale(1.18); opacity: 0; }
+  0%   { transform: scale(0.45); opacity: 0; border-width: 0.55vh; }
+  18%  { opacity: 0.75; }
+  60%  { border-width: 0.2vh; }
+  75%  { opacity: 0.22; }
+  100% { transform: scale(1.18); opacity: 0; border-width: 0.1vh; }
 }
 
 .style-hint {
@@ -687,7 +688,7 @@ h1, h2, h3, h4, h5, h6, p {
 
 .action-button-text {
   font-family: 'Inter', sans-serif;
-  font-size: 1.7rem;
+  font-size: 3.4rem;
   font-weight: 700;
   text-align: center;
   color: white;
@@ -1738,7 +1739,7 @@ h1, h2, h3, h4, h5, h6, p {
   top: 10%; /* 10% offset from top of screen */
   left: 0;
   right: 0;
-  bottom: 22vh; /* Leave space for the action circles at the bottom */
+  bottom: 31vh; /* Leave space for the action circles and their labels */
   width: 80%; /* 10% margin on each side */
   max-width: 80%;
   margin: 0 auto;
@@ -1852,7 +1853,7 @@ h1, h2, h3, h4, h5, h6, p {
   /* never wider than the overlay (80% of the screen minus its padding), so the
      portrait is scaled down instead of running past the right edge */
   max-width: min(78vw, calc(80vw - 3rem));
-  max-height: calc(68vh - 6rem);
+  max-height: calc(59vh - 6rem);
   width: auto;
   height: auto;
   border-radius: 14px;
@@ -1885,7 +1886,7 @@ h1, h2, h3, h4, h5, h6, p {
 /* Result actions (scan / print), sized relative to the screen height */
 .action-circles {
   position: absolute;
-  bottom: 5.5vh;
+  bottom: 11.75vh; /* 5.5vh + half a circle (12.5vh / 2) */
   left: 50%;
   transform: translateX(-50%);
   display: flex;
@@ -2425,7 +2426,7 @@ h1, h2, h3, h4, h5, h6, p {
   left: 0;
   right: 0;
   top: 10%;
-  bottom: 22vh;
+  bottom: 31vh;
   z-index: 0;              /* peeking: behind the portrait, the side cards stick out */
   pointer-events: none;
   opacity: 0;
@@ -2538,7 +2539,7 @@ h1, h2, h3, h4, h5, h6, p {
 
 /* Choosing: the instruction sits big above the cards */
 #result-screen.choosing .result-hint {
-  top: 5.5vh;
+  top: calc(5.5vh + 1.25em);
   bottom: auto;
   font-size: 2.6vh;
   font-weight: 800;
