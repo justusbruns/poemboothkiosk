@@ -41,6 +41,26 @@ export function applyCameraRotation(videoElement, extraScale = 1) {
 }
 
 // Push the camera track to the largest frame size it reports it can deliver.
+// Best-effort: continuous auto exposure and white balance, so a dim room does
+// not leave the preview dark. Logs the camera's exposure capabilities once.
+async function preferAutoExposure(stream) {
+  const track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+  if (!track || typeof track.getCapabilities !== 'function') return;
+  try {
+    const caps = track.getCapabilities() || {};
+    console.log('[CAMERA] Exposure capabilities:', JSON.stringify({
+      exposureMode: caps.exposureMode, exposureCompensation: caps.exposureCompensation,
+      brightness: caps.brightness, whiteBalanceMode: caps.whiteBalanceMode
+    }));
+    const advanced = [];
+    if (Array.isArray(caps.exposureMode) && caps.exposureMode.includes('continuous')) advanced.push({ exposureMode: 'continuous' });
+    if (Array.isArray(caps.whiteBalanceMode) && caps.whiteBalanceMode.includes('continuous')) advanced.push({ whiteBalanceMode: 'continuous' });
+    if (advanced.length) await track.applyConstraints({ advanced });
+  } catch (e) {
+    console.warn('[CAMERA] Auto exposure not applied:', e.message);
+  }
+}
+
 // Best-effort: if the driver refuses, we keep whatever getUserMedia gave us.
 export async function maximizeCameraResolution(stream) {
   const track = stream.getVideoTracks()[0];
@@ -86,6 +106,7 @@ export async function initializeCamera(videoElement) {
     // its real maximum and insist on that, so every kiosk captures at the best the
     // camera can do.
     await maximizeCameraResolution(state.cameraStream);
+    await preferAutoExposure(state.cameraStream);
 
     videoElement.srcObject = state.cameraStream;
 

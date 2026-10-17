@@ -97,6 +97,9 @@ export const it = {
     ]
   },
   result: {
+    chosen: "Scelto",
+    printingCopies: "Stampa di {count} copie",
+    secondsLeft: "circa {s} s rimanenti",
     scanReceiptAndMore: "Scansiona per ricevuta,<br/>versione digitale e altre stampe",
     upsellTerminalBusy: "Il terminale è occupato. Scansiona il QR per ordinare altre stampe.",
     printingProgress: "Stampa {n} di {total}…",
@@ -116,7 +119,7 @@ export const it = {
     scanQrNow: 'Scansiona il QR code ora',
     holdToPrint: 'Tieni premuto il pulsante per stampare',
     // Pay-first (terminal) flow
-    pressToPrint: 'Premi per stampare',
+    pressToPrint: "Premi il pulsante per stampare",
     hintPrint: 'Ti piace? Premi il pulsante grande per stampare subito!',
     hintRetake: "Oppure gira per un tentativo gratis",
     hintPrinting: "La tua stampa sta arrivando",

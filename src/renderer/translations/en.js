@@ -125,6 +125,9 @@ export const en = {
     ]
   },
   result: {
+    chosen: "Chosen",
+    printingCopies: "Printing {count} copies",
+    secondsLeft: "about {s} s left",
     scanReceiptAndMore: "Scan for your receipt,<br/>digital copy and extra prints",
     upsellTerminalBusy: "The card terminal is busy. Scan the QR to order extra prints.",
     printingProgress: "Printing {n} of {total}…",
@@ -144,7 +147,7 @@ export const en = {
     scanQrNow: 'Scan the QR code now',
     holdToPrint: 'Hold button to print',
     // Pay-first (terminal) flow
-    pressToPrint: 'Press to print',
+    pressToPrint: "Press the button to print",
     hintPrint: 'Happy with it? Press the big button to print right away!',
     hintRetake: "Or turn for a free retake",
     hintPrinting: "Your print is on its way",

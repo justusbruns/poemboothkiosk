@@ -957,7 +957,7 @@ h1, h2, h3, h4, h5, h6, p {
   object-fit: cover;
   object-position: center 30%; /* keep the face above the price cards / QR */
   z-index: 1;
-  filter: saturate(0.85) brightness(0.75);
+  filter: saturate(0.95); /* no dark layer over the guest's photo */
   animation: paywallPhotoBreathe calc(4s / var(--energy-speed)) ease-in-out infinite;
 }
 
@@ -1570,6 +1570,39 @@ h1, h2, h3, h4, h5, h6, p {
   100% { opacity: 0; transform: translate(calc(-50% + var(--dx)), calc(-50% + var(--dy))) scale(0.3); }
 }
 
+/* The guest picked a portrait: the chosen card gets a ring and a badge, the
+   others fade, so the choice is unmistakable before the row collapses */
+.result-carousel.chosen .kc-item:not(.is-active) {
+  opacity: 0.12 !important;
+  filter: saturate(0.4) brightness(0.6);
+}
+
+.result-carousel.chosen .kc-item.is-active .choice-card {
+  box-shadow: 0 0 0 0.6vh rgba(255, 255, 255, 0.95), 0 0 60px rgba(255, 236, 196, 0.6), 0 24px 70px rgba(0, 0, 0, 0.6);
+  transform: scale(1.03);
+  transition: box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.chosen-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 2.4vh;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5vh;
+  padding: 0.7vh 1.8vh;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #111111;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.7vh;
+  font-weight: 800;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  animation: successPop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  opacity: 0;
+}
+
 /* The portrait itself: comes out of the light (blurred, overexposed, small)
    and settles with a soft glow */
 @keyframes magicReveal {
@@ -1638,7 +1671,7 @@ h1, h2, h3, h4, h5, h6, p {
 .result-hint {
   position: absolute;
   left: 50%;
-  bottom: 3.4rem;
+  bottom: 8.6vh; /* right under the circle labels */
   transform: translateX(-50%);
   width: 66%; /* oval enclosure: the bottom corners of the screen are hidden */
   margin: 0;

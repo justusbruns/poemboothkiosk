@@ -125,6 +125,9 @@ export const nl = {
     ]
   },
   result: {
+    chosen: "Gekozen",
+    printingCopies: "{count} prints aan het printen",
+    secondsLeft: "nog ongeveer {s} s",
     scanReceiptAndMore: "Scan voor je bonnetje,<br/>digitale versie en extra prints",
     upsellTerminalBusy: "De pinautomaat is even bezet. Scan de QR om extra prints te bestellen.",
     printingProgress: "Printen {n} van {total}…",
@@ -144,7 +147,7 @@ export const nl = {
     scanQrNow: 'Scan nu de QR-code',
     holdToPrint: 'Knop lang indrukken om te printen',
     // Pay-first (terminal) flow
-    pressToPrint: 'Druk om te printen',
+    pressToPrint: "Druk op de knop om te printen",
     hintPrint: 'Blij mee? Druk op de grote knop om direct te printen!',
     hintRetake: "Of draai voor een gratis herkansing",
     hintPrinting: "Je print komt eraan",

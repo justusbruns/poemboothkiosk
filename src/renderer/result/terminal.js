@@ -177,6 +177,13 @@ async function printAllPaid() {
 
   if (state.screen !== 'result') return;
   if (done > 0) {
+    // The printer does not report progress while it prints: show an estimated
+    // countdown (ring fills up, seconds left under the button) so the guest
+    // knows the prints are coming and roughly when
+    await printCountdown(done);
+  }
+  if (state.screen !== 'result') return;
+  if (done > 0) {
     // One "sent" check mark for the batch
     if (elements.printIcon) elements.printIcon.style.display = 'none';
     if (elements.printDoneIcon) {
@@ -200,6 +207,36 @@ async function printAllPaid() {
     swapPrintForQr();
   }, 2200);
   startResultTimer(IDLE_AFTER_PRINT_MS);
+}
+
+// Seconds a DNP print takes to come out, per paper format (roughly)
+const PRINT_SECONDS = { '4x6': 38, '2x6': 38, '4x4': 28, '4x3': 26 };
+function printCountdown(copies) {
+  const per = PRINT_SECONDS[state.currentPrintFormat] || 35;
+  const total = per * copies;
+  const ring = elements.printProgress;
+  const circumference = 440;
+  if (ring) {
+    ring.style.transition = 'none';
+    ring.style.strokeDashoffset = circumference;
+    void ring.offsetWidth;
+    ring.style.transition = `stroke-dashoffset ${total}s linear`;
+    ring.style.strokeDashoffset = 0;
+  }
+  return new Promise((resolve) => {
+    const startedAt = Date.now();
+    const tick = () => {
+      if (state.screen !== 'result') return resolve();
+      const left = Math.max(0, Math.ceil(total - (Date.now() - startedAt) / 1000));
+      if (elements.printLabel) {
+        elements.printLabel.textContent = (copies > 1 ? t('result.printingCopies').replace('{count}', String(copies)) : t('result.printingOne'))
+          + ' · ' + t('result.secondsLeft').replace('{s}', String(left));
+      }
+      if (left <= 0) return resolve();
+      setTimeout(tick, 1000);
+    };
+    tick();
+  });
 }
 
 // Print button shrinks away, then the QR grows in on the same spot
@@ -386,7 +423,7 @@ function openChoice(direction) {
 }
 
 function moveChoice(direction) {
-  if (!choice) return;
+  if (!choice || choosingLocked) return;
   choice.move(direction === 'clockwise' ? 1 : -1);
   setHint(knobHint(choiceHint()));
   armRetakeTimeout();
@@ -457,8 +494,9 @@ async function confirmChoice() {
     const p = it.p;
     const onScreen = state.currentSession && p.sessionId === state.currentSession.id;
     const screen = document.getElementById('result-screen');
-    if (screen) screen.classList.remove('choosing');
     if (retakeTimer) { clearTimeout(retakeTimer); retakeTimer = null; }
+    await showChosen(); // "this one": ring + badge, the others fade
+    if (screen) screen.classList.remove('choosing');
     if (onScreen) {
       console.log('[TERMINAL] Guest keeps the portrait on screen');
       return backToReveal();
@@ -484,6 +522,27 @@ async function confirmChoice() {
   document.getElementById('print-circle')?.classList.remove('show');
   choice = null;
   await processPhoto({ orderId: state.order.id, retake: true });
+}
+
+// Mark the selected card as chosen for a moment (clear feedback on the button)
+let choosingLocked = false;
+function showChosen() {
+  const el = document.getElementById('result-carousel');
+  const node = choice && choice.node(choice.index);
+  if (!el || !node) return Promise.resolve();
+  choosingLocked = true;
+  const badge = document.createElement('span');
+  badge.className = 'chosen-badge';
+  badge.textContent = '✓ ' + t('result.chosen');
+  const card = node.querySelector('.choice-card');
+  if (card) card.appendChild(badge);
+  el.classList.add('chosen');
+  return new Promise((r) => setTimeout(() => {
+    el.classList.remove('chosen');
+    badge.remove();
+    choosingLocked = false;
+    r();
+  }, 1100));
 }
 
 // Kept for the start screen's button / knob routing (the choice no longer
