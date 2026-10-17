@@ -112,15 +112,19 @@ export function startLoadingTextRotation() {
     return;
   }
 
-  // Start at random index
-  state.loadingTextIndex = Math.floor(Math.random() * messages.length);
+  // Random order, every line once before any repeats: a guest who comes
+  // back sees different lines than last time
+  state.loadingOrder = messages.map((_, i) => i).sort(() => Math.random() - 0.5);
+  state.loadingPos = 0;
+  state.loadingTextIndex = state.loadingOrder[0];
   updateLoadingText();
 
-  // Rotate every 5 seconds
+  // Rotate every 4.5 seconds
   state.loadingTextInterval = setInterval(() => {
-    state.loadingTextIndex = (state.loadingTextIndex + 1) % messages.length;
+    state.loadingPos = (state.loadingPos + 1) % state.loadingOrder.length;
+    state.loadingTextIndex = state.loadingOrder[state.loadingPos];
     updateLoadingText();
-  }, 5000);
+  }, 4500);
 
   console.log('[LOADING] Started loading text rotation with', messages.length, 'messages');
 }
