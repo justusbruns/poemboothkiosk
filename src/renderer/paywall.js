@@ -398,3 +398,21 @@ export function cancelPaywall() {
   if (!session) return;
   bailOut(t('paywall.timeout'));
 }
+
+// Button on the paywall: a guest who changes their mind presses twice within
+// a few seconds (one press only shows the hint, so a nudge never throws the
+// photo away). Nothing has been paid at this point.
+let stopArmedUntil = 0;
+export function handlePaywallButton() {
+  if (!session || session.done) return;
+  if (Date.now() < stopArmedUntil) {
+    console.log('[PAYWALL] Guest stopped before paying');
+    stopArmedUntil = 0;
+    return bailOut(t('paywall.stopped'));
+  }
+  stopArmedUntil = Date.now() + 4000;
+  setStatus(t('paywall.pressAgainToStop'));
+  setTimeout(() => {
+    if (Date.now() >= stopArmedUntil && session && !session.done) setStatus('');
+  }, 4100);
+}

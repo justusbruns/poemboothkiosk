@@ -125,6 +125,7 @@ export const en = {
     ]
   },
   result: {
+    upsellCancelHint: "No extra prints after all? Press the button",
     chosen: "Chosen",
     printingCopies: "Printing {count} copies",
     secondsLeft: "about {s} s left",
@@ -197,6 +198,8 @@ export const en = {
     noHours: "See you soon!"
   },
   paywall: {
+    pressAgainToStop: "Changed your mind? Press again to stop",
+    stopped: "Stopped. Press the button for a new photo.",
     perPhoto: "per photo",
     total: "total {price}",
     paidTitle: "Paid!",

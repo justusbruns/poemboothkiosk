@@ -97,6 +97,7 @@ export const it = {
     ]
   },
   result: {
+    upsellCancelHint: "Niente stampe extra? Premi il pulsante",
     chosen: "Scelto",
     printingCopies: "Stampa di {count} copie",
     secondsLeft: "circa {s} s rimanenti",
@@ -169,6 +170,8 @@ export const it = {
     noHours: "A presto!"
   },
   paywall: {
+    pressAgainToStop: "Ci hai ripensato? Premi di nuovo per fermare",
+    stopped: "Fermato. Premi il pulsante per una nuova foto.",
     perPhoto: "a foto",
     total: "totale {price}",
     paidTitle: "Pagato!",

@@ -2,7 +2,7 @@ import { isTerminalPayMode } from './badges.js';
 import { handleCapture } from './capture.js';
 import { handleStyleChange } from './coverflow.js';
 import { updateDebugInfo } from '../debug.js';
-import { cancelPaywall, handlePaywallKnob } from '../paywall.js';
+import { cancelPaywall, handlePaywallButton, handlePaywallKnob } from '../paywall.js';
 import { canLocalPrint, cancelPrintHold, isLocalPrintMode, startPrintHold, updatePrinterStatus } from '../result/print.js';
 import { returnToBoothFromResult } from '../result/qr.js';
 import { handleTerminalResultButton, handleTerminalResultKnob, onRetakeKnob } from '../result/terminal.js';
@@ -58,7 +58,7 @@ export function setupEventListeners() {
       console.log('[HARDWARE] Calling handleCapture()...');
       handleCapture();
     } else if (state.screen === 'paywall') {
-      console.log('[HARDWARE] Button on paywall - ignored (pay on the terminal)');
+      handlePaywallButton(); // press twice = stop without paying
     } else if (state.screen === 'result' && !state.isProcessing && isTerminalPayMode()) {
       // Pay-first flow: print the paid copies / confirm a retake / close a panel
       handleTerminalResultButton();

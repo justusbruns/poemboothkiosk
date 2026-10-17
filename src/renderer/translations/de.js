@@ -97,6 +97,7 @@ export const de = {
     ]
   },
   result: {
+    upsellCancelHint: "Doch keine Extradrucke? Drücke den Knopf",
     chosen: "Gewählt",
     printingCopies: "{count} Drucke werden gedruckt",
     secondsLeft: "noch etwa {s} s",
@@ -169,6 +170,8 @@ export const de = {
     noHours: "Bis bald!"
   },
   paywall: {
+    pressAgainToStop: "Doch nicht? Noch einmal drücken zum Abbrechen",
+    stopped: "Abgebrochen. Drücke den Knopf für ein neues Foto.",
     perPhoto: "pro Foto",
     total: "gesamt {price}",
     paidTitle: "Bezahlt!",

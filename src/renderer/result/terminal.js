@@ -565,6 +565,7 @@ function openUpsell(direction) {
   setPhase('upsell');
   upsell = { extra: 1, timer: null, abort: null };
   renderUpsell(t('result.upsellTap'));
+  setHint(t('result.upsellCancelHint')); // turned by accident? button = no extra prints
   cancelResultTimer();
   scheduleUpsellOrder();
   armPanelClose(closeUpsell);
@@ -573,6 +574,7 @@ function openUpsell(direction) {
 function changeUpsell(direction) {
   if (!upsell) return;
   const max = Math.max(0, ...getTierQuantities()) - paidTotal;
+  if (direction !== 'clockwise' && upsell.extra <= 1) return closeUpsell(); // turned back: no extra prints
   let next = upsell.extra + (direction === 'clockwise' ? 1 : -1);
   next = Math.max(1, Math.min(max, next));
   while (next > 1 && getExtraPrintPriceCents(paidTotal, next) === null) next -= 1;
@@ -671,10 +673,14 @@ function closeUpsell() {
     if (u.abort) u.abort.abort();
   }
   if (state.order && state.order.kind === 'extra_print' && state.order.status === 'pending') {
-    cancelOrder(state.order.id, 'upsell_closed');
+    cancelOrder(state.order.id, 'upsell_closed').then((final) => {
+      // The guest tapped just before we cancelled: that payment stands
+      if (final && final.status === 'paid' && state.screen === 'result') onUpsellPaid(final);
+    });
   }
   state.terminalBusy = false;
   setPhase('printed');
+  setHint(canUpsell() ? t('result.hintUpsell') : '');
   startResultTimer(IDLE_AFTER_PRINT_MS);
 }
 
@@ -692,7 +698,7 @@ export function handleTerminalResultButton() {
       if (state.printsRemaining > 0) return printAllPaid(); // a copy failed earlier
       return;
     case 'upsell':
-      if (!state.terminalBusy) closeUpsell();
+      closeUpsell(); // no extra prints after all (cancels the amount on the terminal)
       return;
     default:
       return; // printing: ignore

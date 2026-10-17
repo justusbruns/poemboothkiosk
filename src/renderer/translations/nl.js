@@ -125,6 +125,7 @@ export const nl = {
     ]
   },
   result: {
+    upsellCancelHint: "Toch geen extra prints? Druk op de knop",
     chosen: "Gekozen",
     printingCopies: "{count} prints aan het printen",
     secondsLeft: "nog ongeveer {s} s",
@@ -197,6 +198,8 @@ export const nl = {
     noHours: "Tot snel!"
   },
   paywall: {
+    pressAgainToStop: "Toch niet? Druk nog een keer om te stoppen",
+    stopped: "Gestopt. Druk op de knop voor een nieuwe foto.",
     perPhoto: "per foto",
     total: "totaal {price}",
     paidTitle: "Betaald!",
