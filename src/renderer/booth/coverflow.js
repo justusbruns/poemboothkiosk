@@ -8,7 +8,8 @@ export let turningTimeout = null;
 
 // Handle style selection with knob rotation (coverflow-style carousel)
 export function handleStyleChange(direction, { auto = false } = {}) {
-  if (state.availableStyles.length === 0) return;
+  // One style (or none): the knob does nothing on the start screen
+  if (state.availableStyles.length < 2) return;
   // A guest turned the knob: stop auto-turning and give them time to choose
   if (!auto) restartIdleAttract(true);
 
@@ -252,7 +253,9 @@ export function getCtaPhrases() {
 export function renderCtaPhrase() {
   if (!elements.actionButtonText) return;
   const phrases = getCtaPhrases();
-  elements.actionButtonText.innerHTML = phrases[ctaPhraseIndex % phrases.length];
+  // The list shrinks when styles change (e.g. one style left): stay in range
+  ctaPhraseIndex = ctaPhraseIndex % phrases.length;
+  elements.actionButtonText.innerHTML = phrases[ctaPhraseIndex];
   // Re-trigger the grow-in animation every time the phrase changes (smooth ease-out,
   // no bounce — scales up from small with a gentle fade)
   elements.actionButtonText.style.animation = 'none';
