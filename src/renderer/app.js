@@ -329,7 +329,7 @@ export async function initializeApp() {
     // Load available poetry styles from config
     if (state.kioskConfig.style_configs && Array.isArray(state.kioskConfig.style_configs)) {
       // Extract poem_style from each style_config
-      state.availableStyles = state.kioskConfig.style_configs.map(sc => sc.poem_style);
+      state.availableStyles = state.kioskConfig.style_configs.map(sc => ({ ...sc.poem_style, style_type: sc.poem_style.style_type || sc.style_type || 'poem' }));
       console.log('[RENDERER] Loaded poetry styles:', state.availableStyles.map(s => s.name).join(', '));
 
       // Debug: Log action button text for each style

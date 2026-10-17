@@ -72,7 +72,7 @@ export async function checkForConfigUpdates() {
         const stylesChanged = JSON.stringify(oldConfig.style_configs) !== JSON.stringify(newConfig.style_configs);
 
         // Extract poem_style from each style_config
-        state.availableStyles = newConfig.style_configs.map(sc => sc.poem_style);
+        state.availableStyles = newConfig.style_configs.map(sc => ({ ...sc.poem_style, style_type: sc.poem_style.style_type || sc.style_type || 'poem' }));
         console.log('[CONFIG] Updated poetry styles:', state.availableStyles.map(s => s.name).join(', '));
 
         // Keep the current index in range
