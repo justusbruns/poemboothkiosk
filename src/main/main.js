@@ -454,6 +454,16 @@ function setupKeyboardShortcuts() {
   // 3. Instead, key events flow: renderer keydown/keyup → IPC → MockHardwareService
   // This path is set up in initializeHardware() via ipcMain.on('hardware:keyEvent')
 
+  // Alt+F4 from an operator keyboard quits the kiosk in one go (guests have no
+  // keyboard; the window itself stays unclosable so nothing else can close it)
+  if (!IS_DEV) {
+    globalShortcut.register('Alt+F4', () => {
+      console.log('[MAIN] Alt+F4: quitting the kiosk');
+      allowQuitForUpdate = true;
+      app.quit();
+    });
+  }
+
   // Arrow keys = knob rotation (these don't need keyup, so globalShortcut is fine)
   globalShortcut.register('Left', () => {
     if (hardwareService && hardwareService instanceof MockHardwareService) {

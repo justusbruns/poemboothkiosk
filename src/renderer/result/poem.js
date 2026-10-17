@@ -2,7 +2,6 @@ import { destroyLottieAnimation } from '../lottie.js';
 import { updatePrintContainerVisibility } from './print.js';
 import { hideResultCameraBackground, updateResultActionLabel, updateResultPaymentUI } from './ui.js';
 import { showScreen } from '../screens.js';
-import { playReveal } from './reveal.js';
 import { elements, state } from '../state.js';
 
 // =============================================================================
@@ -42,19 +41,19 @@ export function calculatePoemFontSize(poemText) {
 
   // Constants
   const LINE_HEIGHT = 1.6; // Match CSS line-height
-  const START_FONT_SIZE = 40; // Start at 40px and work down (increased for better visibility)
-  const MIN_FONT_SIZE = 18; // Minimum readable size (increased)
-  const AVG_CHAR_WIDTH_RATIO = 0.6; // Approximate character width
+  // Relative to the screen: a short poem may fill the whole overlay (about
+  // 90px on the booth), a long one shrinks until it fits
+  const START_FONT_SIZE = Math.max(40, Math.round(availableHeight * 0.055));
+  const MIN_FONT_SIZE = Math.max(18, Math.round(availableHeight * 0.012));
+  // Measure with the real poem font instead of guessing a character width
+  const measure = document.createElement('canvas').getContext('2d');
+  const widthOf = (text, size) => { measure.font = `${size}px 'EB Garamond', Georgia, 'Times New Roman', serif`; return measure.measureText(text).width; };
 
   // Try different font sizes, starting large and working down
   let fontSize = START_FONT_SIZE;
   let bestFit = MIN_FONT_SIZE;
 
   while (fontSize >= MIN_FONT_SIZE) {
-    // Calculate approximate characters per line at this font size
-    const charWidth = fontSize * AVG_CHAR_WIDTH_RATIO;
-    const maxCharsPerLine = Math.floor(availableWidth / charWidth);
-
     // Word-wrap the text
     const lines = poemText.split('\n');
     const wrappedLines = [];
@@ -71,7 +70,7 @@ export function calculatePoemFontSize(poemText) {
       for (const word of words) {
         const testLine = currentLine ? `${currentLine} ${word}` : word;
 
-        if (testLine.length > maxCharsPerLine && currentLine) {
+        if (widthOf(testLine, fontSize) > availableWidth && currentLine) {
           wrappedLines.push(currentLine);
           currentLine = word;
         } else {
@@ -90,15 +89,18 @@ export function calculatePoemFontSize(poemText) {
 
     console.log(`[RENDERER] Testing ${fontSize}px: ${wrappedLines.length} lines, ${totalHeight.toFixed(0)}px height (available: ${availableHeight}px)`);
 
+    // A verse line must stay one line: only at the minimum size may it wrap
+    const linesWrapped = wrappedLines.length > lines.length;
+
     // Check if it fits
-    if (totalHeight <= availableHeight) {
+    if (totalHeight <= availableHeight && (!linesWrapped || fontSize <= MIN_FONT_SIZE)) {
       bestFit = fontSize;
       console.log(`[RENDERER] ✓ Font size ${fontSize}px fits!`);
       break; // Found the largest size that fits
     }
 
     // Try smaller
-    fontSize -= 1;
+    fontSize -= fontSize > 48 ? 2 : 1;
   }
 
   console.log(`[RENDERER] Final font size: ${bestFit}px`);
@@ -181,7 +183,7 @@ export function showPoemWithTypingEffect(poemTextOrStream) {
 
   // Show result screen
   showScreen('result');
-  playReveal();
+  // No light burst for poems: the text needs calm to be read while it types
 
   // Display blurred photo background (ensure visible in case hidden from image generation)
   hideResultCameraBackground();
