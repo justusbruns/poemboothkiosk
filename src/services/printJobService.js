@@ -15,6 +15,9 @@
  */
 const PrinterSupplyService = require('./printerSupplyService');
 
+// Seconds a DNP print takes to come out, per paper format (roughly)
+const PRINT_SECONDS = { '4x6': 38, '2x6': 38, '4x4': 28, '4x3': 26 };
+
 class PrintJobService {
   /**
    * @param {object} deps
@@ -151,8 +154,21 @@ class PrintJobService {
         printOrientation: job.print_orientation || 'portrait'
       });
 
-      await this.apiClient.updatePrintJob(job.id, ok ? 'completed' : 'failed');
-      console.log(`[PRINTJOB] Job ${job.id} ${ok ? 'completed ✅' : 'failed ❌'}`);
+      if (!ok) {
+        await this.apiClient.updatePrintJob(job.id, 'failed');
+        console.log(`[PRINTJOB] Job ${job.id} failed ❌`);
+        return;
+      }
+      // Spooled. The printer gives no 'done' signal, so 'completed' follows after
+      // the time a print of this format takes to come out (the guest's phone
+      // shows 'printing' until then).
+      const seconds = PRINT_SECONDS[job.print_format] || 35;
+      console.log(`[PRINTJOB] Job ${job.id} spooled, completed in ~${seconds}s`);
+      setTimeout(() => {
+        this.apiClient.updatePrintJob(job.id, 'completed')
+          .then(() => console.log(`[PRINTJOB] Job ${job.id} completed ✅`))
+          .catch((e) => console.warn(`[PRINTJOB] Job ${job.id} completion report failed:`, e.message));
+      }, seconds * 1000);
     } catch (e) {
       console.error(`[PRINTJOB] Job ${job.id} error:`, e.message);
       try { await this.apiClient.updatePrintJob(job.id, 'failed'); } catch (_) {}
