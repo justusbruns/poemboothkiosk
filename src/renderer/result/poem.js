@@ -51,8 +51,7 @@ export function calculatePoemFontSize(poemText) {
 
   // Verse (several short lines) keeps every line whole; prose (a roast: one
   // or two long lines) may wrap and only has to fit the height
-  const nonEmpty = poemText.split('
-').filter((l) => l.trim());
+  const nonEmpty = poemText.split('\n').filter((l) => l.trim());
   const isVerse = nonEmpty.length >= 2 && nonEmpty.every((l) => l.length <= 70);
 
   // Try different font sizes, starting large and working down
