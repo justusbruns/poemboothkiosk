@@ -13,6 +13,7 @@ import { t } from './translations/index.js';
 import { state } from './state.js';
 import { setLedPhase } from './leds.js';
 import { stopIdleAttract, restartIdleAttract } from './booth/coverflow.js';
+import { isBoothIdle } from './remote.js';
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 let timer = null;
@@ -85,6 +86,13 @@ export function updateClosed() {
       console.log('[CLOSED] Open again');
       if (state.screen === 'booth') { setLedPhase('idle'); restartIdleAttract(); }
     }
+    return;
+  }
+  // Closing time while a guest is still busy (paying, choosing a retake,
+  // printing): let them finish; the next minute check closes the booth
+  if (!was && !isBoothIdle()) {
+    state.closed = false;
+    console.log('[CLOSED] Closing time, but a guest is busy: waiting');
     return;
   }
   const title = document.getElementById('closed-title');
