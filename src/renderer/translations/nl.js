@@ -51,7 +51,7 @@ export const nl = {
     cta1: 'Druk op<br/>de Knop',
     cta2: 'Proberen<br/>is Gratis',
     inputBadge: 'Origineel',
-    ctaPickStyle: 'Kies<br/>je Stijl',
+    ctaPickStyle: 'Draai en kies<br/>een stijl',
     cta3: 'Krijg nu je<br/>Meesterwerk!'
   },
   countdown: {

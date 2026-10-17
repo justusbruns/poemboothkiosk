@@ -51,7 +51,7 @@ export const en = {
     cta1: 'Press<br/>the Button',
     cta2: 'Trying<br/>is Free',
     inputBadge: 'Original',
-    ctaPickStyle: 'Pick<br/>your Style',
+    ctaPickStyle: 'Turn and pick<br/>a style',
     cta3: 'Get your<br/>Masterpiece now!'
   },
   countdown: {

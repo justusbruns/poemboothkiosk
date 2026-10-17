@@ -23,7 +23,7 @@ export const it = {
     cta1: 'Premi<br/>il Pulsante',
     cta2: 'Provare<br/>è Gratis',
     inputBadge: 'Originale',
-    ctaPickStyle: 'Scegli<br/>il tuo Stile',
+    ctaPickStyle: 'Gira e scegli<br/>uno stile',
     cta3: 'Prendi il tuo<br/>Capolavoro!'
   },
   countdown: {

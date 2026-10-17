@@ -23,7 +23,7 @@ export const fr = {
     cta1: 'Appuie sur<br/>le Bouton',
     cta2: 'Essayer<br/>est Gratuit',
     inputBadge: 'Original',
-    ctaPickStyle: 'Choisis<br/>ton Style',
+    ctaPickStyle: 'Tourne et choisis<br/>un style',
     cta3: 'Obtiens ton<br/>Chef-d’œuvre !'
   },
   countdown: {

@@ -345,10 +345,7 @@ export async function initializeApp() {
         console.log('[RENDERER] ⚠️ First style missing action_button_text');
       }
 
-      // Show style hint only if multiple styles available
-      if (state.availableStyles.length > 1 && elements.styleHint) {
-        elements.styleHint.style.display = 'block';
-      }
+      // The 'turn the knob' line under the row stays hidden: the action text says it
 
       // Build the coverflow of style cards
       state.currentStyleIndex = 0;

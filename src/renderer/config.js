@@ -80,10 +80,7 @@ export async function checkForConfigUpdates() {
           state.currentStyleIndex = 0;
         }
 
-        // Update style hint visibility
-        if (elements.styleHint) {
-          elements.styleHint.style.display = state.availableStyles.length > 1 ? 'block' : 'none';
-        }
+        // The 'turn the knob' line under the row stays hidden (see coverflow.js)
 
         // Rebuild the coverflow cards with the new styles
         if (stylesChanged) buildStyleCoverflow();

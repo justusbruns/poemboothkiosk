@@ -1925,8 +1925,8 @@ h1, h2, h3, h4, h5, h6, p {
 
 /* QR Code canvas inside circle */
 .qr-canvas {
-  width: 8.6vh;
-  height: 8.6vh;
+  width: 7.9vh;
+  height: 7.9vh;
   position: relative;
   z-index: 10;
   display: flex;
