@@ -5,7 +5,8 @@
 // those hours the start screen shows a calm "closed" notice with today's or
 // the next opening time, the LEDs go off and the button does nothing. Event
 // booths (no location) are always open. Checked every 30 s and on every
-// config refresh, so a changed schedule or a reopening needs no restart.
+// config refresh (changed hours arrive as a Realtime poke); the clock itself
+// is checked on every whole minute, so the booth opens exactly on time.
 // =============================================================================
 
 import { t } from './translations/index.js';
@@ -14,7 +15,6 @@ import { setLedPhase } from './leds.js';
 import { stopIdleAttract, restartIdleAttract } from './booth/coverflow.js';
 
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-const CHECK_MS = 30000;
 let timer = null;
 
 function localNow(timeZone) {
@@ -106,7 +106,9 @@ export function updateClosed() {
 }
 
 export function startClosedWatch() {
-  if (timer) clearInterval(timer);
+  if (timer) clearTimeout(timer);
   updateClosed();
-  timer = setInterval(updateClosed, CHECK_MS);
+  // Next check on the next whole minute (opening hours are whole minutes)
+  const msToMinute = 60000 - (Date.now() % 60000) + 50;
+  timer = setTimeout(startClosedWatch, msToMinute);
 }
